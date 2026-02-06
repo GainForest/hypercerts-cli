@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -157,47 +159,86 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Rights name - required
 	name := cmd.String("name")
-	if name == "" {
-		name, err = prompt.ReadRequired(w, os.Stdin, "Rights name", "max 100 chars")
-		if err != nil {
-			return err
-		}
-	}
-	record["rightsName"] = name
-
-	// Rights type - required
 	rightsType := cmd.String("type")
-	if rightsType == "" {
-		rightsType, err = prompt.ReadRequired(w, os.Stdin, "Rights type", "short ID max 10 chars, e.g. CC-BY-4.0")
-		if err != nil {
-			return err
-		}
-	}
-	record["rightsType"] = rightsType
-
-	// Rights description - required
 	description := cmd.String("description")
-	if description == "" {
-		description, err = prompt.ReadRequired(w, os.Stdin, "Description", "")
-		if err != nil {
+	attachmentURI := cmd.String("attachment")
+
+	if name == "" && rightsType == "" && description == "" {
+		// Interactive mode: show all fields at once using huh form
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Rights name").
+					Description("max 100 chars").
+					CharLimit(100).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("rights name is required")
+						}
+						return nil
+					}).
+					Value(&name),
+
+				huh.NewInput().
+					Title("Rights type").
+					Description("short ID max 10 chars, e.g. CC-BY-4.0").
+					CharLimit(10).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("rights type is required")
+						}
+						return nil
+					}).
+					Value(&rightsType),
+
+				huh.NewInput().
+					Title("Description").
+					Description("Describe the rights").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("description is required")
+						}
+						return nil
+					}).
+					Value(&description),
+
+				huh.NewInput().
+					Title("Attachment URI").
+					Description("URL to legal document (optional)").
+					Value(&attachmentURI),
+			).Title("Rights Details"),
+		).WithTheme(huh.ThemeBase16())
+
+		if err := form.Run(); err != nil {
 			return err
 		}
-	}
-	record["rightsDescription"] = description
-
-	// Attachment URI - optional
-	attachmentURI := cmd.String("attachment")
-	if attachmentURI == "" {
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Add attachment URI (legal document)?") {
-			attachmentURI, err = prompt.ReadOptionalField(w, os.Stdin, "Attachment URI", "URL to legal document")
+	} else {
+		// Non-interactive: some flags provided, prompt for any missing required fields
+		if name == "" {
+			name, err = prompt.ReadRequired(w, os.Stdin, "Rights name", "max 100 chars")
+			if err != nil {
+				return err
+			}
+		}
+		if rightsType == "" {
+			rightsType, err = prompt.ReadRequired(w, os.Stdin, "Rights type", "short ID max 10 chars, e.g. CC-BY-4.0")
+			if err != nil {
+				return err
+			}
+		}
+		if description == "" {
+			description, err = prompt.ReadRequired(w, os.Stdin, "Description", "")
 			if err != nil {
 				return err
 			}
 		}
 	}
+
+	record["rightsName"] = name
+	record["rightsType"] = rightsType
+	record["rightsDescription"] = description
+
 	if attachmentURI != "" {
 		record["attachment"] = map[string]any{
 			"$type": "org.hypercerts.defs#uri",

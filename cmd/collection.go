@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -133,29 +135,68 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Title (required)
 	title := cmd.String("title")
-	if title == "" {
-		title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 80 graphemes")
-		if err != nil {
-			return err
-		}
-	}
-	record["title"] = title
-
-	// Type (optional)
 	collType := cmd.String("type")
-	if collType == "" {
-		collType, err = prompt.ReadOptionalField(w, os.Stdin, "Type", "e.g. project, favorites")
+	var shortDesc string
+	var addLocation bool
+
+	if title != "" {
+		// Non-interactive flag mode
+		record["title"] = title
+		if collType != "" {
+			record["type"] = collType
+		}
+	} else {
+		// Interactive: show all fields at once using huh form
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Title").
+					Description("Main title for this collection").
+					CharLimit(80).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("title is required")
+						}
+						return nil
+					}).
+					Value(&title),
+
+				huh.NewInput().
+					Title("Type").
+					Description("e.g. project, favorites (optional)").
+					Value(&collType),
+
+				huh.NewInput().
+					Title("Short description").
+					Description("Brief summary (optional, max 300 graphemes)").
+					CharLimit(300).
+					Value(&shortDesc),
+			).Title("Collection Details"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Add location?").
+					Description("Link a geographic location record").
+					Value(&addLocation),
+			).Title("Linked Records"),
+		).WithTheme(huh.ThemeBase16())
+
+		err := form.Run()
 		if err != nil {
 			return err
 		}
-	}
-	if collType != "" {
-		record["type"] = collType
+
+		record["title"] = title
+		if collType != "" {
+			record["type"] = collType
+		}
+		if shortDesc != "" {
+			record["shortDescription"] = shortDesc
+		}
 	}
 
-	// Select activities to include (required)
+	// Select activities to include (required, needs API/menu interaction)
 	fmt.Fprintln(w, "\nSelect activities to include in this collection:")
 	items, err := promptCollectionItems(ctx, client, w)
 	if err != nil {
@@ -163,27 +204,13 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 	record["items"] = items
 
-	// Optional fields
-	fmt.Fprintln(w)
-	if menu.Confirm(w, os.Stdin, "Add optional fields (description, location)?") {
-		// Short description
-		desc, err := prompt.ReadOptionalField(w, os.Stdin, "Short description", "max 300 graphemes")
+	// Handle location selection if confirmed in form
+	if addLocation {
+		loc, err := selectLocation(ctx, client, w)
 		if err != nil {
 			return err
 		}
-		if desc != "" {
-			record["shortDescription"] = desc
-		}
-
-		// Location
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Add location?") {
-			loc, err := selectLocation(ctx, client, w)
-			if err != nil {
-				return err
-			}
-			record["location"] = buildStrongRef(loc.URI, loc.CID)
-		}
+		record["location"] = buildStrongRef(loc.URI, loc.CID)
 	}
 
 	uri, _, err := atproto.CreateRecord(ctx, client, atproto.CollectionCollection, record)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -110,31 +112,6 @@ func selectWorkScope(ctx context.Context, client *atclient.APIClient, w io.Write
 	return selected, nil
 }
 
-// promptKind prompts for work scope kind selection.
-func promptKind(w io.Writer) (string, error) {
-	type kindOption struct {
-		Value string
-		Label string
-	}
-	options := []kindOption{
-		{"", "(skip)"},
-		{"topic", "topic - subject area"},
-		{"language", "language - programming/natural"},
-		{"domain", "domain - field of study"},
-		{"method", "method - approach/technique"},
-		{"tag", "tag - general label"},
-	}
-
-	selected, err := menu.SingleSelect(w, options, "kind",
-		func(k kindOption) string { return k.Label },
-		func(k kindOption) string { return "" },
-	)
-	if err != nil {
-		return "", err
-	}
-	return selected.Value, nil
-}
-
 func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 	client, err := requireAuth(ctx, cmd)
 	if err != nil {
@@ -147,57 +124,103 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Key (required - lowercase-hyphenated)
 	key := cmd.String("key")
-	if key == "" {
-		key, err = prompt.ReadRequired(w, os.Stdin, "Key", "lowercase-hyphenated, e.g. climate-action")
-		if err != nil {
-			return err
-		}
-	}
-	if !keyPattern.MatchString(key) {
-		return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
-	}
-	record["key"] = key
-
-	// Label (required)
 	label := cmd.String("label")
-	if label == "" {
-		label, err = prompt.ReadRequired(w, os.Stdin, "Label", "human-readable name")
-		if err != nil {
-			return err
-		}
-	}
-	record["label"] = label
-
-	// Kind (optional)
 	kind := cmd.String("kind")
-	if kind == "" {
-		fmt.Fprintln(w, "\nSelect kind (optional):")
-		kind, err = promptKind(w)
-		if err != nil && err != menu.ErrCancelled {
+	description := cmd.String("description")
+
+	if key != "" && label != "" {
+		// Non-interactive flag mode
+		if !keyPattern.MatchString(key) {
+			return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
+		}
+		record["key"] = key
+		record["label"] = label
+		if kind != "" {
+			record["kind"] = kind
+		}
+		if description != "" {
+			record["description"] = description
+		}
+	} else {
+		// Interactive: show all fields at once using huh form
+		var addParent, addAliases bool
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Key").
+					Description("Lowercase-hyphenated, e.g. climate-action").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("key is required")
+						}
+						return nil
+					}).
+					Value(&key),
+
+				huh.NewInput().
+					Title("Label").
+					Description("Human-readable name").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("label is required")
+						}
+						return nil
+					}).
+					Value(&label),
+
+				huh.NewSelect[string]().
+					Title("Kind").
+					Description("Category for this tag (optional)").
+					Options(
+						huh.NewOption("(skip)", ""),
+						huh.NewOption("topic - subject area", "topic"),
+						huh.NewOption("language - programming/natural", "language"),
+						huh.NewOption("domain - field of study", "domain"),
+						huh.NewOption("method - approach/technique", "method"),
+						huh.NewOption("tag - general label", "tag"),
+					).
+					Value(&kind),
+
+				huh.NewInput().
+					Title("Description").
+					Description("Max 1000 graphemes (optional)").
+					CharLimit(1000).
+					Value(&description),
+			).Title("Work Scope Tag"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Add parent tag?").
+					Description("Set a parent for hierarchy").
+					Value(&addParent),
+
+				huh.NewConfirm().
+					Title("Add aliases?").
+					Description("Alternative names for this tag").
+					Value(&addAliases),
+			).Title("Hierarchy"),
+		).WithTheme(huh.ThemeBase16())
+
+		if err := form.Run(); err != nil {
 			return err
 		}
-	}
-	if kind != "" {
-		record["kind"] = kind
-	}
 
-	// Optional fields
-	fmt.Fprintln(w)
-	if menu.Confirm(w, os.Stdin, "Add optional fields (description, parent, aliases)?") {
-		// Description
-		desc, err := prompt.ReadOptionalField(w, os.Stdin, "Description", "max 1000 graphemes")
-		if err != nil {
-			return err
+		if !keyPattern.MatchString(key) {
+			return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
 		}
-		if desc != "" {
-			record["description"] = desc
+		record["key"] = key
+		record["label"] = label
+		if kind != "" {
+			record["kind"] = kind
+		}
+		if description != "" {
+			record["description"] = description
 		}
 
-		// Parent
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Set parent tag (for hierarchy)?") {
+		// Handle parent selection (needs API call + menu)
+		if addParent {
 			parent, err := selectWorkScope(ctx, client, w)
 			if err != nil && err != menu.ErrCancelled {
 				return err
@@ -207,9 +230,8 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 
-		// Aliases
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Add aliases?") {
+		// Handle aliases (loop until blank)
+		if addAliases {
 			var aliases []string
 			for {
 				alias, err := prompt.ReadOptionalField(w, os.Stdin, "Alias", "alternative name, or blank to finish")

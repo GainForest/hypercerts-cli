@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -109,14 +111,28 @@ func runContributorCreate(ctx context.Context, cmd *cli.Command) error {
 	displayName := cmd.String("name")
 
 	if identifier == "" {
-		identifier, err = prompt.ReadRequired(w, os.Stdin, "Identifier", "DID or profile URI")
-		if err != nil {
-			return err
-		}
-	}
-	if displayName == "" {
-		displayName, err = prompt.ReadOptionalField(w, os.Stdin, "Display name", "max 100 chars, optional")
-		if err != nil {
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Identifier").
+					Description("DID or profile URI").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("identifier is required")
+						}
+						return nil
+					}).
+					Value(&identifier),
+
+				huh.NewInput().
+					Title("Display name").
+					Description("Optional, max 100 chars").
+					CharLimit(100).
+					Value(&displayName),
+			).Title("Contributor"),
+		).WithTheme(huh.ThemeBase16())
+
+		if err := form.Run(); err != nil {
 			return err
 		}
 	}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -182,35 +184,56 @@ func runLocationCreate(ctx context.Context, cmd *cli.Command) error {
 	var lat, lon float64
 	if latStr == "" || lonStr == "" {
 		// Interactive mode
-		latStr, err = prompt.ReadLineWithDefault(w, os.Stdin, "Latitude", "-90 to 90", "")
-		if err != nil {
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Latitude").
+					Description("-90 to 90").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("latitude is required")
+						}
+						return nil
+					}).
+					Value(&latStr),
+
+				huh.NewInput().
+					Title("Longitude").
+					Description("-180 to 180").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("longitude is required")
+						}
+						return nil
+					}).
+					Value(&lonStr),
+
+				huh.NewInput().
+					Title("Name").
+					Description("optional, max 100 graphemes").
+					CharLimit(100).
+					Value(&name),
+
+				huh.NewInput().
+					Title("Description").
+					Description("optional, max 500 graphemes").
+					CharLimit(500).
+					Value(&description),
+			).Title("Location"),
+		).WithTheme(huh.ThemeBase16())
+
+		if err := form.Run(); err != nil {
 			return err
-		}
-		lat, ok := parseFloat(latStr)
-		if !ok || lat < -90 || lat > 90 {
-			return fmt.Errorf("invalid latitude: must be between -90 and 90")
 		}
 
-		lonStr, err = prompt.ReadLineWithDefault(w, os.Stdin, "Longitude", "-180 to 180", "")
-		if err != nil {
-			return err
+		var ok bool
+		lat, ok = parseFloat(latStr)
+		if !ok || lat < -90 || lat > 90 {
+			return fmt.Errorf("invalid latitude: must be between -90 and 90")
 		}
 		lon, ok = parseFloat(lonStr)
 		if !ok || lon < -180 || lon > 180 {
 			return fmt.Errorf("invalid longitude: must be between -180 and 180")
-		}
-
-		if name == "" {
-			name, err = prompt.ReadOptionalField(w, os.Stdin, "Name", "optional, max 100 graphemes")
-			if err != nil {
-				return err
-			}
-		}
-		if description == "" {
-			description, err = prompt.ReadOptionalField(w, os.Stdin, "Description", "optional, max 500 graphemes")
-			if err != nil {
-				return err
-			}
 		}
 	} else {
 		// Non-interactive mode

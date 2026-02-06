@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,21 +11,13 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
 	"github.com/GainForest/hypercerts-cli/internal/prompt"
 )
-
-var measurementOptionalFields = []optionalField{
-	{Name: "startDate", Label: "Start date", Hint: "when measurement began"},
-	{Name: "endDate", Label: "End date", Hint: "when measurement ended"},
-	{Name: "methodType", Label: "Method type", Hint: "short methodology ID, max 30 chars"},
-	{Name: "methodURI", Label: "Method URI", Hint: "URI to methodology docs"},
-	{Name: "comment", Label: "Comment", Hint: "max 300 chars"},
-	{Name: "locations", Label: "Locations", Hint: "geographic locations"},
-}
 
 type measurementOption struct {
 	URI         string
@@ -157,38 +150,12 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 	record["subject"] = buildStrongRef(subjectURI, subjectCID)
 
-	// Metric - required
+	// Check for non-interactive mode (flags provided)
 	metric := cmd.String("metric")
-	if metric == "" {
-		metric, err = prompt.ReadRequired(w, os.Stdin, "Metric", "e.g. 'trees planted'")
-		if err != nil {
-			return err
-		}
-	}
-	record["metric"] = metric
-
-	// Unit - required
 	unit := cmd.String("unit")
-	if unit == "" {
-		unit, err = prompt.ReadRequired(w, os.Stdin, "Unit", "e.g. 'count', 'kg', 'hectares'")
-		if err != nil {
-			return err
-		}
-	}
-	record["unit"] = unit
-
-	// Value - required (stored as string for DAG-CBOR)
 	value := cmd.String("value")
-	if value == "" {
-		value, err = prompt.ReadRequired(w, os.Stdin, "Value", "numeric")
-		if err != nil {
-			return err
-		}
-	}
-	record["value"] = value
+	hasFlags := metric != "" || unit != "" || value != ""
 
-	// Handle optional flags (non-interactive mode)
-	hasFlags := false
 	if s := cmd.String("start-date"); s != "" {
 		record["startDate"] = normalizeDate(s)
 		hasFlags = true
@@ -202,22 +169,144 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 		hasFlags = true
 	}
 
-	// Interactive optional fields
-	if !hasFlags {
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Add optional fields?") {
-			selected, err := menu.MultiSelect(w, measurementOptionalFields, "field",
-				func(f optionalField) string { return f.Label },
-				func(f optionalField) string { return f.Hint },
-			)
-			if err != nil && err != menu.ErrCancelled {
+	if hasFlags {
+		// Non-interactive: require metric, unit, value via flags or prompt fallback
+		if metric == "" {
+			metric, err = prompt.ReadRequired(w, os.Stdin, "Metric", "e.g. 'trees planted'")
+			if err != nil {
 				return err
 			}
+		}
+		if unit == "" {
+			unit, err = prompt.ReadRequired(w, os.Stdin, "Unit", "e.g. 'count', 'kg', 'hectares'")
+			if err != nil {
+				return err
+			}
+		}
+		if value == "" {
+			value, err = prompt.ReadRequired(w, os.Stdin, "Value", "numeric")
+			if err != nil {
+				return err
+			}
+		}
+		record["metric"] = metric
+		record["unit"] = unit
+		record["value"] = value
+	} else {
+		// Interactive: show all fields at once using huh form
+		var startDate, endDate, methodType, methodURI, comment string
+		var addLocations bool
 
-			for _, field := range selected {
-				if err := promptMeasurementOptionalField(ctx, client, w, record, field); err != nil {
-					return err
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Metric").
+					Description("What is being measured, e.g. 'trees planted'").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("metric is required")
+						}
+						return nil
+					}).
+					Value(&metric),
+
+				huh.NewInput().
+					Title("Unit").
+					Description("Unit of measurement, e.g. 'count', 'kg', 'hectares'").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("unit is required")
+						}
+						return nil
+					}).
+					Value(&unit),
+
+				huh.NewInput().
+					Title("Value").
+					Description("Numeric measurement value").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("value is required")
+						}
+						return nil
+					}).
+					Value(&value),
+			).Title("Measurement Data"),
+
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Start date").
+					Description("YYYY-MM-DD (optional)").
+					Value(&startDate),
+
+				huh.NewInput().
+					Title("End date").
+					Description("YYYY-MM-DD (optional)").
+					Value(&endDate),
+
+				huh.NewInput().
+					Title("Method type").
+					Description("Short methodology ID, max 30 chars (optional)").
+					CharLimit(30).
+					Value(&methodType),
+
+				huh.NewInput().
+					Title("Method URI").
+					Description("URI to methodology docs (optional)").
+					Value(&methodURI),
+
+				huh.NewInput().
+					Title("Comment").
+					Description("Additional notes, max 300 chars (optional)").
+					CharLimit(300).
+					Value(&comment),
+			).Title("Optional Fields"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Add locations?").
+					Description("Link geographic location records").
+					Value(&addLocations),
+			).Title("Linked Records"),
+		).WithTheme(huh.ThemeBase16())
+
+		err := form.Run()
+		if err != nil {
+			return err
+		}
+
+		record["metric"] = metric
+		record["unit"] = unit
+		record["value"] = value
+
+		if startDate != "" {
+			record["startDate"] = normalizeDate(startDate)
+		}
+		if endDate != "" {
+			record["endDate"] = normalizeDate(endDate)
+		}
+		if methodType != "" {
+			record["methodType"] = methodType
+		}
+		if methodURI != "" {
+			record["methodURI"] = methodURI
+		}
+		if comment != "" {
+			record["comment"] = comment
+		}
+
+		// Handle linked records interactively (need API calls)
+		if addLocations {
+			locations, err := selectLocations(ctx, client, w)
+			if err != nil {
+				return err
+			}
+			if len(locations) > 0 {
+				var refs []any
+				for _, loc := range locations {
+					refs = append(refs, buildStrongRef(loc.URI, loc.CID))
 				}
+				record["locations"] = refs
 			}
 		}
 	}
@@ -228,64 +317,6 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	fmt.Fprintf(w, "\n\033[32m✓\033[0m Created measurement: %s\n", uri)
-	return nil
-}
-
-func promptMeasurementOptionalField(ctx context.Context, client *atclient.APIClient, w io.Writer, record map[string]any, field optionalField) error {
-	switch field.Name {
-	case "startDate":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Start date", "YYYY-MM-DD or RFC3339")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["startDate"] = normalizeDate(val)
-		}
-	case "endDate":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "End date", "YYYY-MM-DD or RFC3339")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["endDate"] = normalizeDate(val)
-		}
-	case "methodType":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Method type", "short methodology ID, max 30 chars")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["methodType"] = val
-		}
-	case "methodURI":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Method URI", "URI to methodology docs")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["methodURI"] = val
-		}
-	case "comment":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Comment", "max 300 chars")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["comment"] = val
-		}
-	case "locations":
-		locations, err := selectLocations(ctx, client, w)
-		if err != nil {
-			return err
-		}
-		if len(locations) > 0 {
-			var refs []any
-			for _, loc := range locations {
-				refs = append(refs, buildStrongRef(loc.URI, loc.CID))
-			}
-			record["locations"] = refs
-		}
-	}
 	return nil
 }
 

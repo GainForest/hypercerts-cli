@@ -16,13 +16,6 @@ import (
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 )
 
-// optionalField represents an optional field that can be added to a record.
-type optionalField struct {
-	Name  string
-	Label string
-	Hint  string
-}
-
 // requireAuth authenticates and returns an API client, or a user-friendly error.
 func requireAuth(ctx context.Context, cmd *cli.Command) (*atclient.APIClient, error) {
 	client, err := atproto.LoginOrLoad(

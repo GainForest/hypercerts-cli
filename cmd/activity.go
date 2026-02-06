@@ -650,30 +650,6 @@ func findLinkedURIs(ctx context.Context, client *atclient.APIClient, did, collec
 	return uris
 }
 
-// findCollectionsContaining finds collection URIs that contain the target activity URI in their items.
-func findCollectionsContaining(ctx context.Context, client *atclient.APIClient, did, targetURI string) []string {
-	entries, err := atproto.ListAllRecords(ctx, client, did, atproto.CollectionCollection)
-	if err != nil {
-		return nil
-	}
-	var uris []string
-	for _, e := range entries {
-		if items, ok := e.Value["items"].([]any); ok {
-			for _, item := range items {
-				if itemMap, ok := item.(map[string]any); ok {
-					if itemID, ok := itemMap["itemIdentifier"].(map[string]any); ok {
-						if itemURI, ok := itemID["uri"].(string); ok && itemURI == targetURI {
-							uris = append(uris, e.URI)
-							break
-						}
-					}
-				}
-			}
-		}
-	}
-	return uris
-}
-
 func runActivityList(ctx context.Context, cmd *cli.Command) error {
 	client, err := requireAuth(ctx, cmd)
 	if err != nil {

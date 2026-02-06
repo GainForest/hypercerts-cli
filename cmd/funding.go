@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -98,52 +100,170 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// From (required - DID of sender)
 	from := cmd.String("from")
-	if from == "" {
-		defaultFrom := client.AccountDID.String()
-		from, err = prompt.ReadRequiredWithDefault(w, os.Stdin, "From (sender DID)", "", defaultFrom)
-		if err != nil {
-			return err
-		}
-	}
-	record["from"] = from
-
-	// To (required - recipient)
 	to := cmd.String("to")
-	if to == "" {
-		to, err = prompt.ReadRequired(w, os.Stdin, "To (recipient)", "DID or name")
-		if err != nil {
-			return err
-		}
-	}
-	record["to"] = to
-
-	// Amount (required)
 	amount := cmd.String("amount")
-	if amount == "" {
-		amount, err = prompt.ReadRequired(w, os.Stdin, "Amount", "e.g. 1000.00")
-		if err != nil {
-			return err
-		}
-	}
-	record["amount"] = amount
-
-	// Currency (required)
 	currency := cmd.String("currency")
-	if currency == "" {
-		currency, err = prompt.ReadRequired(w, os.Stdin, "Currency", "e.g. USD, EUR, ETH")
+	forURI := cmd.String("for")
+
+	hasFlags := from != "" || to != "" || amount != "" || currency != ""
+
+	if hasFlags {
+		// Non-interactive: require fields via flags or prompt fallback
+		if from == "" {
+			defaultFrom := client.AccountDID.String()
+			from, err = prompt.ReadRequiredWithDefault(w, os.Stdin, "From (sender DID)", "", defaultFrom)
+			if err != nil {
+				return err
+			}
+		}
+		if to == "" {
+			to, err = prompt.ReadRequired(w, os.Stdin, "To (recipient)", "DID or name")
+			if err != nil {
+				return err
+			}
+		}
+		if amount == "" {
+			amount, err = prompt.ReadRequired(w, os.Stdin, "Amount", "e.g. 1000.00")
+			if err != nil {
+				return err
+			}
+		}
+		if currency == "" {
+			currency, err = prompt.ReadRequired(w, os.Stdin, "Currency", "e.g. USD, EUR, ETH")
+			if err != nil {
+				return err
+			}
+		}
+
+		record["from"] = from
+		record["to"] = to
+		record["amount"] = amount
+		record["currency"] = currency
+
+		// Handle --for flag
+		if forURI != "" {
+			did := client.AccountDID.String()
+			record["for"] = resolveRecordURI(did, atproto.CollectionActivity, forURI)
+		}
+	} else {
+		// Interactive: show all fields at once using huh form
+		var paymentRail, paymentNetwork, transactionID, notes, occurredAt string
+		var linkActivity bool
+
+		// Pre-populate from with default
+		from = client.AccountDID.String()
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("From").
+					Description("Sender DID").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("from is required")
+						}
+						return nil
+					}).
+					Value(&from),
+
+				huh.NewInput().
+					Title("To").
+					Description("Recipient DID or name").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("to is required")
+						}
+						return nil
+					}).
+					Value(&to),
+
+				huh.NewInput().
+					Title("Amount").
+					Description("e.g. 1000.00").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("amount is required")
+						}
+						return nil
+					}).
+					Value(&amount),
+
+				huh.NewInput().
+					Title("Currency").
+					Description("e.g. USD, EUR, ETH").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("currency is required")
+						}
+						return nil
+					}).
+					Value(&currency),
+			).Title("Funding Details"),
+
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Payment rail").
+					Description("bank_transfer, credit_card, onchain, cash (optional)").
+					Value(&paymentRail),
+
+				huh.NewInput().
+					Title("Payment network").
+					Description("arbitrum, ethereum, sepa, visa, paypal (optional)").
+					Value(&paymentNetwork),
+
+				huh.NewInput().
+					Title("Transaction ID").
+					Description("Payment reference (optional)").
+					Value(&transactionID),
+
+				huh.NewInput().
+					Title("Notes").
+					Description("Max 500 chars (optional)").
+					CharLimit(500).
+					Value(&notes),
+
+				huh.NewInput().
+					Title("Occurred at").
+					Description("YYYY-MM-DD or RFC3339 (optional)").
+					Value(&occurredAt),
+			).Title("Payment Details"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Link to an activity?").
+					Description("Select an existing activity to link this funding to").
+					Value(&linkActivity),
+			).Title("Linked Records"),
+		).WithTheme(huh.ThemeBase16())
+
+		err := form.Run()
 		if err != nil {
 			return err
 		}
-	}
-	record["currency"] = currency
 
-	// Optional: link to activity
-	forURI := cmd.String("for")
-	if forURI == "" {
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Link to an activity?") {
+		record["from"] = from
+		record["to"] = to
+		record["amount"] = amount
+		record["currency"] = currency
+
+		if paymentRail != "" {
+			record["paymentRail"] = paymentRail
+		}
+		if paymentNetwork != "" {
+			record["paymentNetwork"] = paymentNetwork
+		}
+		if transactionID != "" {
+			record["transactionId"] = transactionID
+		}
+		if notes != "" {
+			record["notes"] = notes
+		}
+		if occurredAt != "" {
+			record["occurredAt"] = normalizeDate(occurredAt)
+		}
+
+		if linkActivity {
 			uri, _, err := selectActivity(ctx, client, w)
 			if err != nil && err != menu.ErrCancelled {
 				return err
@@ -151,58 +271,6 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 			if uri != "" {
 				record["for"] = uri
 			}
-		}
-	} else {
-		did := client.AccountDID.String()
-		record["for"] = resolveRecordURI(did, atproto.CollectionActivity, forURI)
-	}
-
-	// Optional fields
-	fmt.Fprintln(w)
-	if menu.Confirm(w, os.Stdin, "Add optional fields (payment details, notes)?") {
-		// Payment rail
-		rail, err := prompt.ReadOptionalField(w, os.Stdin, "Payment rail", "bank_transfer, credit_card, onchain, cash")
-		if err != nil {
-			return err
-		}
-		if rail != "" {
-			record["paymentRail"] = rail
-		}
-
-		// Payment network
-		network, err := prompt.ReadOptionalField(w, os.Stdin, "Payment network", "arbitrum, ethereum, sepa, visa, paypal")
-		if err != nil {
-			return err
-		}
-		if network != "" {
-			record["paymentNetwork"] = network
-		}
-
-		// Transaction ID
-		txID, err := prompt.ReadOptionalField(w, os.Stdin, "Transaction ID", "payment reference")
-		if err != nil {
-			return err
-		}
-		if txID != "" {
-			record["transactionId"] = txID
-		}
-
-		// Notes
-		notes, err := prompt.ReadOptionalField(w, os.Stdin, "Notes", "max 500 chars")
-		if err != nil {
-			return err
-		}
-		if notes != "" {
-			record["notes"] = notes
-		}
-
-		// Occurred at
-		occurredAt, err := prompt.ReadOptionalField(w, os.Stdin, "Occurred at", "YYYY-MM-DD or RFC3339")
-		if err != nil {
-			return err
-		}
-		if occurredAt != "" {
-			record["occurredAt"] = normalizeDate(occurredAt)
 		}
 	}
 
