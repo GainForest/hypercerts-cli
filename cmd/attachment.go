@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -163,42 +165,147 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Title - required
 	title := cmd.String("title")
-	if title == "" {
-		title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
-		if err != nil {
-			return err
-		}
-	}
-	record["title"] = title
-
-	// Subjects (activities to link) - at least one recommended
 	activityFlag := cmd.String("activity")
-	if activityFlag != "" {
-		// Parse comma-separated or single activity
-		activityIDs := strings.Split(activityFlag, ",")
-		var subjects []any
-		for _, actID := range activityIDs {
-			actID = strings.TrimSpace(actID)
-			if actID == "" {
-				continue
-			}
-			activityURI := resolveRecordURI(did, atproto.CollectionActivity, actID)
-			aturi, err := syntax.ParseATURI(activityURI)
+	uriFlag := cmd.String("uri")
+	contentType := cmd.String("content-type")
+
+	hasFlags := title != "" || activityFlag != "" || uriFlag != "" || contentType != ""
+
+	if hasFlags {
+		// Non-interactive: require title via flag or prompt fallback
+		if title == "" {
+			title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
 			if err != nil {
-				return fmt.Errorf("invalid activity URI: %w", err)
+				return err
 			}
-			_, activityCID, err := atproto.GetRecord(ctx, client, did, aturi.Collection().String(), aturi.RecordKey().String())
-			if err != nil {
-				return fmt.Errorf("activity not found: %s", actID)
-			}
-			subjects = append(subjects, buildStrongRef(activityURI, activityCID))
 		}
-		if len(subjects) > 0 {
-			record["subjects"] = subjects
+		record["title"] = title
+
+		// Subjects from --activity flag
+		if activityFlag != "" {
+			activityIDs := strings.Split(activityFlag, ",")
+			var subjects []any
+			for _, actID := range activityIDs {
+				actID = strings.TrimSpace(actID)
+				if actID == "" {
+					continue
+				}
+				activityURI := resolveRecordURI(did, atproto.CollectionActivity, actID)
+				aturi, err := syntax.ParseATURI(activityURI)
+				if err != nil {
+					return fmt.Errorf("invalid activity URI: %w", err)
+				}
+				_, activityCID, err := atproto.GetRecord(ctx, client, did, aturi.Collection().String(), aturi.RecordKey().String())
+				if err != nil {
+					return fmt.Errorf("activity not found: %s", actID)
+				}
+				subjects = append(subjects, buildStrongRef(activityURI, activityCID))
+			}
+			if len(subjects) > 0 {
+				record["subjects"] = subjects
+			}
+		}
+
+		// Content URIs from --uri flag
+		if uriFlag != "" {
+			uris := strings.Split(uriFlag, ",")
+			var content []any
+			for _, u := range uris {
+				u = strings.TrimSpace(u)
+				if u == "" {
+					continue
+				}
+				content = append(content, map[string]any{
+					"$type": "org.hypercerts.defs#uri",
+					"uri":   u,
+				})
+			}
+			if len(content) == 0 {
+				return fmt.Errorf("at least one content URI is required")
+			}
+			record["content"] = content
+		} else {
+			fmt.Fprintln(w)
+			content, err := promptContentURIs(w)
+			if err != nil {
+				return err
+			}
+			record["content"] = content
+		}
+
+		if contentType != "" {
+			record["contentType"] = contentType
 		}
 	} else {
+		// Interactive: show all fields at once using huh form
+		var shortDesc, description string
+		var addLocation bool
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Title").
+					Description("Main title for this attachment").
+					CharLimit(256).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("title is required")
+						}
+						return nil
+					}).
+					Value(&title),
+
+				huh.NewSelect[string]().
+					Title("Content type").
+					Description("Category (optional)").
+					Options(
+						huh.NewOption("(skip)", ""),
+						huh.NewOption("report", "report"),
+						huh.NewOption("audit", "audit"),
+						huh.NewOption("evidence", "evidence"),
+						huh.NewOption("testimonial", "testimonial"),
+						huh.NewOption("methodology", "methodology"),
+					).
+					Value(&contentType),
+
+				huh.NewInput().
+					Title("Short description").
+					Description("Brief summary, max 300 chars (optional)").
+					CharLimit(300).
+					Value(&shortDesc),
+
+				huh.NewInput().
+					Title("Description").
+					Description("Longer description, max 3000 chars (optional)").
+					CharLimit(3000).
+					Value(&description),
+			).Title("Attachment Details"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Add location?").
+					Description("Link a geographic location record").
+					Value(&addLocation),
+			).Title("Linked Records"),
+		).WithTheme(huh.ThemeBase16())
+
+		if err := form.Run(); err != nil {
+			return err
+		}
+
+		record["title"] = title
+		if contentType != "" {
+			record["contentType"] = contentType
+		}
+		if shortDesc != "" {
+			record["shortDescription"] = shortDesc
+		}
+		if description != "" {
+			record["description"] = description
+		}
+
+		// Select subjects (activities) - needs API + menu
 		fmt.Fprintln(w, "Select activities to link this attachment to:")
 		subjects, err := selectSubjects(ctx, client, w)
 		if err != nil {
@@ -207,74 +314,17 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 		if len(subjects) > 0 {
 			record["subjects"] = subjects
 		}
-	}
 
-	// Content URIs - required
-	uriFlag := cmd.String("uri")
-	if uriFlag != "" {
-		uris := strings.Split(uriFlag, ",")
-		var content []any
-		for _, u := range uris {
-			u = strings.TrimSpace(u)
-			if u == "" {
-				continue
-			}
-			content = append(content, map[string]any{
-				"$type": "org.hypercerts.defs#uri",
-				"uri":   u,
-			})
-		}
-		if len(content) == 0 {
-			return fmt.Errorf("at least one content URI is required")
-		}
-		record["content"] = content
-	} else {
+		// Prompt content URIs - needs loop
 		fmt.Fprintln(w)
 		content, err := promptContentURIs(w)
 		if err != nil {
 			return err
 		}
 		record["content"] = content
-	}
 
-	// Content type - optional
-	contentType := cmd.String("content-type")
-	if contentType == "" {
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Add content type?") {
-			selected, err := menu.SingleSelect(w, attachmentContentTypes, "content type",
-				func(s string) string { return s },
-				func(s string) string { return "" },
-			)
-			if err == nil {
-				contentType = *selected
-			}
-		}
-	}
-	if contentType != "" {
-		record["contentType"] = contentType
-	}
-
-	// Optional fields
-	fmt.Fprintln(w)
-	if menu.Confirm(w, os.Stdin, "Add optional fields (description, location)?") {
-		shortDesc, err := prompt.ReadOptionalField(w, os.Stdin, "Short description", "max 300 chars")
-		if err != nil {
-			return err
-		}
-		if shortDesc != "" {
-			record["shortDescription"] = shortDesc
-		}
-
-		desc, err := prompt.ReadOptionalField(w, os.Stdin, "Description", "max 3000 chars")
-		if err != nil {
-			return err
-		}
-		if desc != "" {
-			record["description"] = desc
-		}
-
-		if menu.Confirm(w, os.Stdin, "Add location?") {
+		// Handle location selection if confirmed in form
+		if addLocation {
 			loc, err := selectLocation(ctx, client, w)
 			if err != nil {
 				return err

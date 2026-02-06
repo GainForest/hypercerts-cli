@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
@@ -244,73 +246,178 @@ func runEvaluationCreate(ctx context.Context, cmd *cli.Command) error {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Subject (what is being evaluated) - optional but recommended
-	fmt.Fprintln(w, "Select what to evaluate (activity, measurement, etc.):")
-	subjectURI, subjectCID, err := selectActivity(ctx, client, w)
-	if err != nil && err != menu.ErrCancelled {
-		return err
-	}
-	if subjectURI != "" {
-		record["subject"] = buildStrongRef(subjectURI, subjectCID)
-	}
-
-	// Evaluators - required
-	fmt.Fprintln(w)
-	evaluators, err := promptEvaluators(w)
-	if err != nil {
-		return err
-	}
-	record["evaluators"] = evaluators
-
-	// Summary - required
 	summary := cmd.String("summary")
-	if summary == "" {
+	hasFlags := summary != ""
+
+	if hasFlags {
+		// Non-interactive: use flags and prompt for missing required fields
+
+		// Subject
+		fmt.Fprintln(w, "Select what to evaluate (activity, measurement, etc.):")
+		subjectURI, subjectCID, err := selectActivity(ctx, client, w)
+		if err != nil && err != menu.ErrCancelled {
+			return err
+		}
+		if subjectURI != "" {
+			record["subject"] = buildStrongRef(subjectURI, subjectCID)
+		}
+
+		// Evaluators
 		fmt.Fprintln(w)
-		summary, err = prompt.ReadRequired(w, os.Stdin, "Summary", "brief evaluation summary")
+		evaluators, err := promptEvaluators(w)
 		if err != nil {
 			return err
 		}
-	}
-	record["summary"] = summary
+		record["evaluators"] = evaluators
+		record["summary"] = summary
+	} else {
+		// Interactive: show text fields in huh form, then API-dependent interactions
+		var scoreMin, scoreMax, scoreValue string
+		var addSubject, addContentURIs, addMeasurements, addLocation bool
 
-	// Content URIs - optional
-	content, err := promptContentURIsForEval(w)
-	if err != nil {
-		return err
-	}
-	if len(content) > 0 {
-		record["content"] = content
-	}
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Summary").
+					Description("Brief evaluation summary").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("summary is required")
+						}
+						return nil
+					}).
+					Value(&summary),
+			).Title("Evaluation"),
 
-	// Score - optional
-	score, err := promptScore(w)
-	if err != nil {
-		return err
-	}
-	if score != nil {
-		record["score"] = score
-	}
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Score min").
+					Description("Minimum score value, e.g. 0 (optional)").
+					Value(&scoreMin),
 
-	// Measurements - optional
-	fmt.Fprintln(w)
-	if menu.Confirm(w, os.Stdin, "Link measurements to this evaluation?") {
-		measurements, err := selectMeasurements(ctx, client, w)
+				huh.NewInput().
+					Title("Score max").
+					Description("Maximum score value, e.g. 10 (optional)").
+					Value(&scoreMax),
+
+				huh.NewInput().
+					Title("Score value").
+					Description("Actual score (optional)").
+					Value(&scoreValue),
+			).Title("Score"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Link to an activity?").
+					Description("Select what to evaluate").
+					Value(&addSubject),
+
+				huh.NewConfirm().
+					Title("Add content URIs?").
+					Description("Reports, methodology docs").
+					Value(&addContentURIs),
+
+				huh.NewConfirm().
+					Title("Link measurements?").
+					Description("Select measurement records to reference").
+					Value(&addMeasurements),
+
+				huh.NewConfirm().
+					Title("Add location?").
+					Description("Link a geographic location record").
+					Value(&addLocation),
+			).Title("Linked Records"),
+		).WithTheme(huh.ThemeBase16())
+
+		if err := form.Run(); err != nil {
+			return err
+		}
+
+		record["summary"] = summary
+
+		// Parse score if any score field was filled
+		if scoreMin != "" || scoreMax != "" || scoreValue != "" {
+			min, err := strconv.Atoi(scoreMin)
+			if err != nil && scoreMin != "" {
+				return fmt.Errorf("invalid min score: must be an integer")
+			}
+			if scoreMin == "" {
+				min = 0
+			}
+			max, err := strconv.Atoi(scoreMax)
+			if err != nil && scoreMax != "" {
+				return fmt.Errorf("invalid max score: must be an integer")
+			}
+			if scoreMax == "" {
+				max = 10
+			}
+			if scoreValue == "" {
+				return fmt.Errorf("score value is required when min/max are set")
+			}
+			value, err := strconv.Atoi(scoreValue)
+			if err != nil {
+				return fmt.Errorf("invalid score value: must be an integer")
+			}
+			if value < min || value > max {
+				return fmt.Errorf("score value must be between %d and %d", min, max)
+			}
+			record["score"] = map[string]any{
+				"min":   min,
+				"max":   max,
+				"value": value,
+			}
+		}
+
+		// Subject (activity selection) - needs API call
+		if addSubject {
+			fmt.Fprintln(w, "Select what to evaluate:")
+			subjectURI, subjectCID, err := selectActivity(ctx, client, w)
+			if err != nil && err != menu.ErrCancelled {
+				return err
+			}
+			if subjectURI != "" {
+				record["subject"] = buildStrongRef(subjectURI, subjectCID)
+			}
+		}
+
+		// Evaluators - needs loop
+		fmt.Fprintln(w)
+		evaluators, err := promptEvaluators(w)
 		if err != nil {
 			return err
 		}
-		if len(measurements) > 0 {
-			record["measurements"] = measurements
-		}
-	}
+		record["evaluators"] = evaluators
 
-	// Location - optional
-	fmt.Fprintln(w)
-	if menu.Confirm(w, os.Stdin, "Add location?") {
-		loc, err := selectLocation(ctx, client, w)
-		if err != nil {
-			return err
+		// Content URIs - needs loop
+		if addContentURIs {
+			content, err := promptContentURIsForEval(w)
+			if err != nil {
+				return err
+			}
+			if len(content) > 0 {
+				record["content"] = content
+			}
 		}
-		record["location"] = buildStrongRef(loc.URI, loc.CID)
+
+		// Measurements - needs API + menu
+		if addMeasurements {
+			measurements, err := selectMeasurements(ctx, client, w)
+			if err != nil {
+				return err
+			}
+			if len(measurements) > 0 {
+				record["measurements"] = measurements
+			}
+		}
+
+		// Location - needs API + menu
+		if addLocation {
+			loc, err := selectLocation(ctx, client, w)
+			if err != nil {
+				return err
+			}
+			record["location"] = buildStrongRef(loc.URI, loc.CID)
+		}
 	}
 
 	uri, _, err := atproto.CreateRecord(ctx, client, atproto.CollectionEvaluation, record)
