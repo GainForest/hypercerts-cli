@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,31 +11,13 @@ import (
 
 	"github.com/bluesky-social/indigo/atproto/atclient"
 	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/charmbracelet/huh"
 	"github.com/urfave/cli/v3"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
 	"github.com/GainForest/hypercerts-cli/internal/prompt"
 )
-
-// optionalField represents an optional field that can be added to an activity.
-type optionalField struct {
-	Name  string
-	Label string
-	Hint  string
-}
-
-var activityOptionalFields = []optionalField{
-	{Name: "description", Label: "Description", Hint: "longer description, max 3000 chars"},
-	{Name: "workScope", Label: "Work scope (free-form)", Hint: "scope of the work as text"},
-	{Name: "workScopeTag", Label: "Work scope (tag)", Hint: "link to a reusable scope tag"},
-	{Name: "startDate", Label: "Start date", Hint: "YYYY-MM-DD or RFC3339"},
-	{Name: "endDate", Label: "End date", Hint: "YYYY-MM-DD or RFC3339"},
-	{Name: "contributors", Label: "Contributors", Hint: "add contributor references"},
-	{Name: "locations", Label: "Locations", Hint: "geographic locations"},
-	{Name: "rights", Label: "Rights", Hint: "rights/license definition"},
-	{Name: "image", Label: "Image", Hint: "image URI for the hypercert"},
-}
 
 type activityOption struct {
 	URI     string
@@ -86,28 +69,11 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 
-	// Required: title
+	// Check for non-interactive mode (flags provided)
 	title := cmd.String("title")
-	if title == "" {
-		title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
-		if err != nil {
-			return err
-		}
-	}
-	record["title"] = title
-
-	// Required: shortDescription
 	shortDesc := cmd.String("description")
-	if shortDesc == "" {
-		shortDesc, err = prompt.ReadRequired(w, os.Stdin, "Short description", "max 300 chars")
-		if err != nil {
-			return err
-		}
-	}
-	record["shortDescription"] = shortDesc
+	hasFlags := title != "" || shortDesc != ""
 
-	// Handle optional flags (non-interactive mode)
-	hasFlags := false
 	if s := cmd.String("start-date"); s != "" {
 		record["startDate"] = normalizeDate(s)
 		hasFlags = true
@@ -124,23 +90,159 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 		hasFlags = true
 	}
 
-	// Interactive optional fields
-	if !hasFlags {
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Add optional fields?") {
-			selected, err := menu.MultiSelect(w, activityOptionalFields, "field",
-				func(f optionalField) string { return f.Label },
-				func(f optionalField) string { return f.Hint },
-			)
-			if err != nil && err != menu.ErrCancelled {
+	if hasFlags {
+		// Non-interactive: require title and description via flags or prompt fallback
+		if title == "" {
+			title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
+			if err != nil {
 				return err
 			}
-
-			for _, field := range selected {
-				if err := promptOptionalField(ctx, client, w, record, field); err != nil {
-					return err
-				}
+		}
+		if shortDesc == "" {
+			shortDesc, err = prompt.ReadRequired(w, os.Stdin, "Short description", "max 300 chars")
+			if err != nil {
+				return err
 			}
+		}
+		record["title"] = title
+		record["shortDescription"] = shortDesc
+	} else {
+		// Interactive: show all fields at once using huh form
+		var description, workScope, startDate, endDate, imageURI string
+		var addContributors, addLocations, addRights bool
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Title").
+					Description("Main title for this hypercert").
+					CharLimit(256).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("title is required")
+						}
+						return nil
+					}).
+					Value(&title),
+
+				huh.NewInput().
+					Title("Short description").
+					Description("Brief summary of the activity").
+					CharLimit(300).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("short description is required")
+						}
+						return nil
+					}).
+					Value(&shortDesc),
+
+				huh.NewInput().
+					Title("Description").
+					Description("Longer description (optional)").
+					CharLimit(3000).
+					Value(&description),
+
+				huh.NewInput().
+					Title("Work scope").
+					Description("Free-form scope of work (optional)").
+					Value(&workScope),
+			).Title("Activity Details"),
+
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Start date").
+					Description("YYYY-MM-DD (optional)").
+					Value(&startDate),
+
+				huh.NewInput().
+					Title("End date").
+					Description("YYYY-MM-DD (optional)").
+					Value(&endDate),
+
+				huh.NewInput().
+					Title("Image URI").
+					Description("URL to hypercert image (optional)").
+					Value(&imageURI),
+			).Title("Dates & Media"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Add contributors?").
+					Description("Link contributor records to this activity").
+					Value(&addContributors),
+
+				huh.NewConfirm().
+					Title("Add locations?").
+					Description("Link geographic location records").
+					Value(&addLocations),
+
+				huh.NewConfirm().
+					Title("Add rights?").
+					Description("Link a rights/license record").
+					Value(&addRights),
+			).Title("Linked Records"),
+		).WithTheme(huh.ThemeBase16())
+
+		err := form.Run()
+		if err != nil {
+			return err
+		}
+
+		record["title"] = title
+		record["shortDescription"] = shortDesc
+
+		if description != "" {
+			record["description"] = description
+		}
+		if workScope != "" {
+			record["workScope"] = map[string]any{
+				"$type": atproto.CollectionActivity + "#workScopeString",
+				"scope": workScope,
+			}
+		}
+		if startDate != "" {
+			record["startDate"] = normalizeDate(startDate)
+		}
+		if endDate != "" {
+			record["endDate"] = normalizeDate(endDate)
+		}
+		if imageURI != "" {
+			record["image"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   imageURI,
+			}
+		}
+
+		// Handle linked records interactively (need API calls)
+		if addContributors {
+			contributors, err := promptContributors(ctx, client, w)
+			if err != nil {
+				return err
+			}
+			if len(contributors) > 0 {
+				record["contributors"] = contributors
+			}
+		}
+		if addLocations {
+			locations, err := selectLocations(ctx, client, w)
+			if err != nil {
+				return err
+			}
+			if len(locations) > 0 {
+				var refs []any
+				for _, loc := range locations {
+					refs = append(refs, buildStrongRef(loc.URI, loc.CID))
+				}
+				record["locations"] = refs
+			}
+		}
+		if addRights {
+			rights, err := selectRights(ctx, client, w)
+			if err != nil {
+				return err
+			}
+			record["rights"] = buildStrongRef(rights.URI, rights.CID)
 		}
 	}
 
@@ -149,97 +251,9 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("failed to create activity: %w", err)
 	}
 
-	fmt.Fprintf(w, "\n\033[32m\u2713\033[0m Created activity: %s\n", uri)
+	fmt.Fprintf(w, "\n\033[32m✓\033[0m Created activity: %s\n", uri)
 	return nil
 }
-
-func promptOptionalField(ctx context.Context, client *atclient.APIClient, w io.Writer, record map[string]any, field optionalField) error {
-	switch field.Name {
-	case "description":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Description", "max 3000 chars")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["description"] = val
-		}
-	case "workScope":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Work scope", "free-form scope description")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["workScope"] = map[string]any{
-				"$type": atproto.CollectionActivity + "#workScopeString",
-				"scope": val,
-			}
-		}
-	case "startDate":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Start date", "YYYY-MM-DD or RFC3339")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["startDate"] = normalizeDate(val)
-		}
-	case "endDate":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "End date", "YYYY-MM-DD or RFC3339")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["endDate"] = normalizeDate(val)
-		}
-	case "contributors":
-		contributors, err := promptContributors(ctx, client, w)
-		if err != nil {
-			return err
-		}
-		if len(contributors) > 0 {
-			record["contributors"] = contributors
-		}
-	case "locations":
-		locations, err := selectLocations(ctx, client, w)
-		if err != nil {
-			return err
-		}
-		if len(locations) > 0 {
-			var refs []any
-			for _, loc := range locations {
-				refs = append(refs, buildStrongRef(loc.URI, loc.CID))
-			}
-			record["locations"] = refs
-		}
-	case "rights":
-		rights, err := selectRights(ctx, client, w)
-		if err != nil {
-			return err
-		}
-		record["rights"] = buildStrongRef(rights.URI, rights.CID)
-	case "workScopeTag":
-		scope, err := selectWorkScope(ctx, client, w)
-		if err != nil {
-			return err
-		}
-		record["workScope"] = map[string]any{
-			"$type": atproto.CollectionActivity + "#workScopeRef",
-			"scope": buildStrongRef(scope.URI, scope.CID),
-		}
-	case "image":
-		val, err := prompt.ReadOptionalField(w, os.Stdin, "Image URI", "URL to hypercert image")
-		if err != nil {
-			return err
-		}
-		if val != "" {
-			record["image"] = map[string]any{
-				"$type": "org.hypercerts.defs#uri",
-				"uri":   val,
-			}
-		}
-	}
-	return nil
-}
-
 func promptContributors(ctx context.Context, client *atclient.APIClient, w io.Writer) ([]any, error) {
 	var contributors []any
 	for i := 1; ; i++ {
