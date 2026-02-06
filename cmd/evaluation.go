@@ -17,7 +17,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type evaluationOption struct {
@@ -101,21 +101,39 @@ func promptEvaluators(w io.Writer) ([]string, error) {
 	var evaluators []string
 	for {
 		var did string
-		var err error
-		if len(evaluators) == 0 {
-			did, err = prompt.ReadRequired(w, os.Stdin, "Evaluator DID", "e.g. did:plc:abc123")
-		} else {
-			did, err = prompt.ReadOptionalField(w, os.Stdin, "Evaluator DID", "enter to finish")
+		var addAnother bool
+
+		title := "Evaluator DID"
+		desc := "e.g. did:plc:abc123"
+		if len(evaluators) > 0 {
+			title = "Another evaluator DID"
+			desc = "leave blank to finish"
 		}
-		if err != nil {
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().Title(title).Description(desc).Value(&did),
+				huh.NewConfirm().Title("Add another evaluator?").Inline(true).Value(&addAnother),
+			).Title(fmt.Sprintf("Evaluator %d", len(evaluators)+1)),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				break
+			}
 			return nil, err
 		}
-		if did == "" {
+
+		if strings.TrimSpace(did) == "" {
+			if len(evaluators) == 0 {
+				// At least one is required, loop again
+				continue
+			}
 			break
 		}
 		evaluators = append(evaluators, did)
 
-		if !menu.Confirm(w, os.Stdin, "Add another evaluator?") {
+		if !addAnother {
 			break
 		}
 	}
@@ -125,16 +143,36 @@ func promptEvaluators(w io.Writer) ([]string, error) {
 // promptContentURIsForEval prompts for content URIs (reports, methodology docs).
 func promptContentURIsForEval(w io.Writer) ([]map[string]any, error) {
 	var content []map[string]any
-	fmt.Fprintln(w)
-	if !menu.Confirm(w, os.Stdin, "Add content URIs (reports, methodology)?") {
+	var addContent bool
+
+	err := huh.NewConfirm().
+		Title("Add content URIs (reports, methodology)?").
+		Value(&addContent).
+		WithTheme(style.Theme()).
+		Run()
+	if err != nil || !addContent {
 		return nil, nil
 	}
+
 	for {
-		uri, err := prompt.ReadLineWithDefault(w, os.Stdin, "Content URI", "URL to report/methodology", "")
-		if err != nil {
+		var uri string
+		var addAnother bool
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().Title("Content URI").Description("URL to report/methodology").Value(&uri),
+				huh.NewConfirm().Title("Add another content URI?").Inline(true).Value(&addAnother),
+			),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				break
+			}
 			return nil, err
 		}
-		if uri == "" {
+
+		if strings.TrimSpace(uri) == "" {
 			break
 		}
 		content = append(content, map[string]any{
@@ -142,7 +180,7 @@ func promptContentURIsForEval(w io.Writer) ([]map[string]any, error) {
 			"uri":   uri,
 		})
 
-		if !menu.Confirm(w, os.Stdin, "Add another content URI?") {
+		if !addAnother {
 			break
 		}
 	}
@@ -151,32 +189,46 @@ func promptContentURIsForEval(w io.Writer) ([]map[string]any, error) {
 
 // promptScore prompts for score (min, max, value).
 func promptScore(w io.Writer) (map[string]any, error) {
-	fmt.Fprintln(w)
-	if !menu.Confirm(w, os.Stdin, "Add score?") {
+	var addScore bool
+
+	err := huh.NewConfirm().
+		Title("Add score?").
+		Value(&addScore).
+		WithTheme(style.Theme()).
+		Run()
+	if err != nil || !addScore {
 		return nil, nil
 	}
 
-	minStr, err := prompt.ReadLineWithDefault(w, os.Stdin, "Score min", "e.g. 0 or 1", "0")
-	if err != nil {
+	var minStr, maxStr, valueStr string
+	minStr = "0"
+	maxStr = "10"
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("Score min").Description("e.g. 0 or 1").Value(&minStr),
+			huh.NewInput().Title("Score max").Description("e.g. 5 or 10").Value(&maxStr),
+			huh.NewInput().Title("Score value").Description("actual score").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("score value is required")
+					}
+					return nil
+				}).Value(&valueStr),
+		).Title("Score"),
+	).WithTheme(style.Theme())
+
+	if err := form.Run(); err != nil {
 		return nil, err
 	}
+
 	min, err := strconv.Atoi(minStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid min score: must be an integer")
 	}
-
-	maxStr, err := prompt.ReadLineWithDefault(w, os.Stdin, "Score max", "e.g. 5 or 10", "10")
-	if err != nil {
-		return nil, err
-	}
 	max, err := strconv.Atoi(maxStr)
 	if err != nil {
 		return nil, fmt.Errorf("invalid max score: must be an integer")
-	}
-
-	valueStr, err := prompt.ReadLineWithDefault(w, os.Stdin, "Score value", fmt.Sprintf("between %d and %d", min, max), "")
-	if err != nil {
-		return nil, err
 	}
 	value, err := strconv.Atoi(valueStr)
 	if err != nil {
@@ -309,25 +361,25 @@ func runEvaluationCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Link to an activity?").
-					Inline(true).
+					Description("Activity being evaluated").
 					Value(&addSubject),
 
 				huh.NewConfirm().
 					Title("Add content URIs?").
-					Inline(true).
+					Description("Links to reports, evidence, or data").
 					Value(&addContentURIs),
 
 				huh.NewConfirm().
 					Title("Link measurements?").
-					Inline(true).
+					Description("Impact measurements supporting this evaluation").
 					Value(&addMeasurements),
 
 				huh.NewConfirm().
 					Title("Add location?").
-					Inline(true).
+					Description("Geographic coordinates for this evaluation").
 					Value(&addLocation),
 			).Title("Linked Records"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
 			return err
@@ -478,24 +530,70 @@ func runEvaluationEdit(ctx context.Context, cmd *cli.Command) error {
 	isInteractive := cmd.String("summary") == ""
 
 	if isInteractive {
-		// Summary
-		newSummary, err := prompt.ReadLineWithDefault(w, os.Stdin, "Summary", "required", currentSummary)
-		if err != nil {
+		newSummary := currentSummary
+		var editScore, editLocation, editMeasurements bool
+
+		existingScore := mapMap(existing, "score")
+		scoreTitle := "Add score?"
+		if existingScore != nil {
+			scoreTitle = "Replace score?"
+		}
+		existingLoc := mapMap(existing, "location")
+		locTitle := "Link location?"
+		if existingLoc != nil {
+			locTitle = "Replace location?"
+		}
+		existingMeasurements := mapSlice(existing, "measurements")
+		measTitle := "Link measurements?"
+		if len(existingMeasurements) > 0 {
+			measTitle = fmt.Sprintf("Replace %d measurement(s)?", len(existingMeasurements))
+		}
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Summary").
+					Description("Required").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("summary is required")
+						}
+						return nil
+					}).
+					Value(&newSummary),
+			).Title("Edit Evaluation"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(scoreTitle).
+					Description("Numeric score for this evaluation").
+					Value(&editScore),
+
+				huh.NewConfirm().
+					Title(locTitle).
+					Description("Geographic coordinates for this evaluation").
+					Value(&editLocation),
+
+				huh.NewConfirm().
+					Title(measTitle).
+					Description("Impact measurements supporting this evaluation").
+					Value(&editMeasurements),
+			).Title("Linked Records"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
+
 		if newSummary != currentSummary {
 			existing["summary"] = newSummary
 			changed = true
 		}
 
-		// Score
-		existingScore := mapMap(existing, "score")
-		scoreLabel := "Add score?"
-		if existingScore != nil {
-			scoreLabel = "Replace score?"
-		}
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, scoreLabel) {
+		if editScore {
 			score, err := promptScore(w)
 			if err != nil {
 				return err
@@ -506,14 +604,7 @@ func runEvaluationEdit(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 
-		// Location
-		existingLoc := mapMap(existing, "location")
-		locLabel := "Add location?"
-		if existingLoc != nil {
-			locLabel = "Replace location?"
-		}
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, locLabel) {
+		if editLocation {
 			loc, err := selectLocation(ctx, client, w)
 			if err != nil {
 				return err
@@ -522,14 +613,7 @@ func runEvaluationEdit(ctx context.Context, cmd *cli.Command) error {
 			changed = true
 		}
 
-		// Measurements
-		existingMeasurements := mapSlice(existing, "measurements")
-		measLabel := "Add measurements?"
-		if len(existingMeasurements) > 0 {
-			measLabel = fmt.Sprintf("Replace %d measurement(s)?", len(existingMeasurements))
-		}
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, measLabel) {
+		if editMeasurements {
 			measurements, err := selectMeasurements(ctx, client, w)
 			if err != nil {
 				return err

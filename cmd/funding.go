@@ -15,7 +15,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type fundingOption struct {
@@ -111,26 +111,50 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 	if hasFlags {
 		// Non-interactive: require fields via flags or prompt fallback
 		if from == "" {
-			defaultFrom := client.AccountDID.String()
-			from, err = prompt.ReadRequiredWithDefault(w, os.Stdin, "From (sender DID)", "", defaultFrom)
+			from = client.AccountDID.String()
+			err = huh.NewInput().Title("From (sender DID)").Value(&from).
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("from is required")
+					}
+					return nil
+				}).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if to == "" {
-			to, err = prompt.ReadRequired(w, os.Stdin, "To (recipient)", "DID or name")
+			err = huh.NewInput().Title("To (recipient)").Description("DID or name").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("recipient is required")
+					}
+					return nil
+				}).Value(&to).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if amount == "" {
-			amount, err = prompt.ReadRequired(w, os.Stdin, "Amount", "e.g. 1000.00")
+			err = huh.NewInput().Title("Amount").Description("e.g. 1000.00").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("amount is required")
+					}
+					return nil
+				}).Value(&amount).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if currency == "" {
-			currency, err = prompt.ReadRequired(w, os.Stdin, "Currency", "e.g. USD, EUR, ETH")
+			err = huh.NewInput().Title("Currency").Description("e.g. USD, EUR, ETH").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("currency is required")
+					}
+					return nil
+				}).Value(&currency).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
@@ -232,10 +256,10 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Link to an activity?").
-					Inline(true).
+					Description("Activity this funding supports").
 					Value(&linkActivity),
 			).Title("Linked Records"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		err := form.Run()
 		if err != nil {
@@ -328,47 +352,77 @@ func runFundingEdit(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	// Get current values
-	currentTo := mapStr(existing, "to")
-	currentAmount := mapStr(existing, "amount")
-	currentCurrency := mapStr(existing, "currency")
-	currentNotes := mapStr(existing, "notes")
+	newTo := mapStr(existing, "to")
+	newAmount := mapStr(existing, "amount")
+	newCurrency := mapStr(existing, "currency")
+	newNotes := mapStr(existing, "notes")
 
-	changed := false
+	currentTo := newTo
+	currentAmount := newAmount
+	currentCurrency := newCurrency
+	currentNotes := newNotes
 
-	// To
-	newTo, err := prompt.ReadLineWithDefault(w, os.Stdin, "To (recipient)", "required", currentTo)
-	if err != nil {
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("To (recipient)").
+				Description("DID or name").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("recipient is required")
+					}
+					return nil
+				}).
+				Value(&newTo),
+
+			huh.NewInput().
+				Title("Amount").
+				Description("e.g. 1000.00").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("amount is required")
+					}
+					return nil
+				}).
+				Value(&newAmount),
+
+			huh.NewInput().
+				Title("Currency").
+				Description("e.g. USD, EUR, ETH").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("currency is required")
+					}
+					return nil
+				}).
+				Value(&newCurrency),
+
+			huh.NewInput().
+				Title("Notes").
+				Description("Optional").
+				Value(&newNotes),
+		).Title("Edit Funding Receipt"),
+	).WithTheme(style.Theme())
+
+	if err := form.Run(); err != nil {
+		if err == huh.ErrUserAborted {
+			return nil
+		}
 		return err
 	}
+
+	changed := false
 	if newTo != currentTo {
 		existing["to"] = newTo
 		changed = true
-	}
-
-	// Amount
-	newAmount, err := prompt.ReadLineWithDefault(w, os.Stdin, "Amount", "required", currentAmount)
-	if err != nil {
-		return err
 	}
 	if newAmount != currentAmount {
 		existing["amount"] = newAmount
 		changed = true
 	}
-
-	// Currency
-	newCurrency, err := prompt.ReadLineWithDefault(w, os.Stdin, "Currency", "required", currentCurrency)
-	if err != nil {
-		return err
-	}
 	if newCurrency != currentCurrency {
 		existing["currency"] = newCurrency
 		changed = true
-	}
-
-	// Notes
-	newNotes, err := prompt.ReadLineWithDefault(w, os.Stdin, "Notes", "optional", currentNotes)
-	if err != nil {
-		return err
 	}
 	if newNotes != currentNotes {
 		if newNotes == "" {

@@ -2,7 +2,7 @@
 set -e
 
 echo "Installing hc..."
-go install github.com/GainForest/hypercerts-cli/cmd/hc@v0.1.0
+go install github.com/GainForest/hypercerts-cli/cmd/hc@v0.1.1
 
 GOBIN="$(go env GOPATH)/bin"
 

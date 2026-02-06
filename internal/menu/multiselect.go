@@ -5,12 +5,15 @@ import (
 	"io"
 	"os"
 
+	"github.com/charmbracelet/huh"
 	"golang.org/x/term"
+
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
-// MultiSelect displays an interactive multi-select menu with checkboxes.
-// Space toggles selection, 'a' selects all, 'n' selects none.
-func MultiSelect[T any](w io.Writer, items []T, itemType string, getName func(T) string, getInfo func(T) string) ([]T, error) {
+// MultiSelect displays an interactive multi-select menu using huh.
+// Space/x toggles selection, ctrl+a toggles all. Returns the selected items.
+func MultiSelect[T comparable](w io.Writer, items []T, itemType string, getName func(T) string, getInfo func(T) string) ([]T, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("no %ss found", itemType)
 	}
@@ -20,81 +23,46 @@ func MultiSelect[T any](w io.Writer, items []T, itemType string, getName func(T)
 		return nil, ErrNonInteractive
 	}
 
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return nil, fmt.Errorf("terminal error: %w", err)
+	opts := make([]huh.Option[int], len(items))
+	for i, item := range items {
+		label := getName(item)
+		if info := getInfo(item); info != "" {
+			label = fmt.Sprintf("%s  %s", label, info)
+		}
+		opts[i] = huh.NewOption(label, i)
 	}
 
-	fmt.Fprint(os.Stdout, "\033[?1049h\033[H")
+	var selectedIndices []int
+	ms := huh.NewMultiSelect[int]().
+		Title("Select " + itemType + "s").
+		Options(opts...).
+		Height(selectHeight(len(opts))).
+		Filterable(len(items) > 5).
+		Value(&selectedIndices)
 
-	cursor := 0
-	selected := make(map[int]bool)
-	buf := make([]byte, 3)
-	for {
-		RenderMultiSelect(os.Stdout, items, itemType, cursor, selected, getName, getInfo)
+	form := huh.NewForm(huh.NewGroup(ms)).
+		WithTheme(style.Theme())
 
-		n, err := os.Stdin.Read(buf)
-		if err != nil {
-			fmt.Fprint(os.Stdout, "\033[?1049l")
-			_ = term.Restore(fd, oldState)
-			return nil, err
+	if err := form.Run(); err != nil {
+		if err == huh.ErrUserAborted {
+			return nil, ErrCancelled
 		}
-
-		if n == 1 {
-			switch buf[0] {
-			case 13, 10: // Enter
-				fmt.Fprint(os.Stdout, "\033[?1049l")
-				_ = term.Restore(fd, oldState)
-				if len(selected) == 0 {
-					selected[cursor] = true
-				}
-				var result []T
-				for i, item := range items {
-					if selected[i] {
-						result = append(result, item)
-					}
-				}
-				if len(result) == 1 {
-					fmt.Fprintf(w, "Selected: %s\n\n", getName(result[0]))
-				} else {
-					fmt.Fprintf(w, "Selected %d %ss\n\n", len(result), itemType)
-				}
-				return result, nil
-			case 'q', 3:
-				fmt.Fprint(os.Stdout, "\033[?1049l")
-				_ = term.Restore(fd, oldState)
-				return nil, ErrCancelled
-			case ' ':
-				selected[cursor] = !selected[cursor]
-				if !selected[cursor] {
-					delete(selected, cursor)
-				}
-			case 'a':
-				for i := range items {
-					selected[i] = true
-				}
-			case 'n':
-				selected = make(map[int]bool)
-			case 'k':
-				if cursor > 0 {
-					cursor--
-				}
-			case 'j':
-				if cursor < len(items)-1 {
-					cursor++
-				}
-			}
-		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
-			switch buf[2] {
-			case 65:
-				if cursor > 0 {
-					cursor--
-				}
-			case 66:
-				if cursor < len(items)-1 {
-					cursor++
-				}
-			}
-		}
+		return nil, err
 	}
+
+	var result []T
+	for _, idx := range selectedIndices {
+		result = append(result, items[idx])
+	}
+
+	if len(result) == 0 {
+		return nil, ErrCancelled
+	}
+
+	if len(result) == 1 {
+		fmt.Fprintf(w, "Selected: %s\n\n", getName(result[0]))
+	} else {
+		fmt.Fprintf(w, "Selected %d %ss\n\n", len(result), itemType)
+	}
+	return result, nil
 }

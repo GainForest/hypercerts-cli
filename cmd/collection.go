@@ -15,7 +15,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type collectionOption struct {
@@ -107,10 +107,18 @@ func promptCollectionItems(ctx context.Context, client *atclient.APIClient, w in
 			"itemIdentifier": buildStrongRef(a.URI, cid),
 		}
 
-		// Optionally prompt for weight
-		fmt.Fprintf(w, "\n")
-		weight, err := prompt.ReadOptionalField(w, os.Stdin, fmt.Sprintf("Weight for '%s'", a.Title), "e.g. 0.5 or 1.0")
+		// Optionally prompt for weight via huh
+		var weight string
+		err = huh.NewInput().
+			Title(fmt.Sprintf("Weight for '%s'", a.Title)).
+			Description("e.g. 0.5 or 1.0, optional").
+			Value(&weight).
+			WithTheme(style.Theme()).
+			Run()
 		if err != nil {
+			if err == huh.ErrUserAborted {
+				continue
+			}
 			return nil, err
 		}
 		if weight != "" {
@@ -177,10 +185,10 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add location?").
-					Inline(true).
+					Description("Geographic coordinates for this collection").
 					Value(&addLocation),
 			).Title("Linked Records"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		err := form.Run()
 		if err != nil {
@@ -273,20 +281,65 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 	isInteractive := cmd.String("title") == "" && cmd.String("type") == ""
 
 	if isInteractive {
-		// Title
-		newTitle, err := prompt.ReadLineWithDefault(w, os.Stdin, "Title", "required", currentTitle)
-		if err != nil {
+		newTitle := currentTitle
+		newType := currentType
+		newDesc := currentDesc
+		var editLocation, manageItems bool
+
+		existingLoc := mapMap(existing, "location")
+		locTitle := "Link location?"
+		if existingLoc != nil {
+			locTitle = "Replace location?"
+		}
+		existingItems := mapSlice(existing, "items")
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Title").
+					Description("Required").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("title is required")
+						}
+						return nil
+					}).
+					Value(&newTitle),
+
+				huh.NewInput().
+					Title("Type").
+					Description("Optional").
+					Value(&newType),
+
+				huh.NewInput().
+					Title("Short description").
+					Description("Optional").
+					Value(&newDesc),
+			).Title("Edit Collection"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(locTitle).
+					Description("Geographic coordinates for this collection").
+					Value(&editLocation),
+
+				huh.NewConfirm().
+					Title(fmt.Sprintf("Manage items? (currently %d)", len(existingItems))).
+					Description("Add, remove, or reweight collection items").
+					Value(&manageItems),
+			).Title("Linked Records"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
+
 		if newTitle != currentTitle {
 			existing["title"] = newTitle
 			changed = true
-		}
-
-		// Type
-		newType, err := prompt.ReadLineWithDefault(w, os.Stdin, "Type", "optional", currentType)
-		if err != nil {
-			return err
 		}
 		if newType != currentType {
 			if newType == "" {
@@ -295,12 +348,6 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 				existing["type"] = newType
 			}
 			changed = true
-		}
-
-		// Short description
-		newDesc, err := prompt.ReadLineWithDefault(w, os.Stdin, "Short description", "optional", currentDesc)
-		if err != nil {
-			return err
 		}
 		if newDesc != currentDesc {
 			if newDesc == "" {
@@ -311,14 +358,7 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 			changed = true
 		}
 
-		// Location
-		existingLoc := mapMap(existing, "location")
-		locLabel := "Add location?"
-		if existingLoc != nil {
-			locLabel = "Replace location?"
-		}
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, locLabel) {
+		if editLocation {
 			loc, err := selectLocation(ctx, client, w)
 			if err != nil {
 				return err
@@ -327,10 +367,7 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 			changed = true
 		}
 
-		// Items management
-		existingItems := mapSlice(existing, "items")
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, fmt.Sprintf("Manage items? (currently %d)", len(existingItems))) {
+		if manageItems {
 			fmt.Fprintln(w, "\nSelect activities to include (replaces current items):")
 			items, err := promptCollectionItems(ctx, client, w)
 			if err != nil {

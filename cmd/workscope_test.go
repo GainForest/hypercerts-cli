@@ -41,15 +41,3 @@ func TestKeyPattern(t *testing.T) {
 		})
 	}
 }
-
-func TestWorkScopeKinds(t *testing.T) {
-	expected := []string{"topic", "language", "domain", "method", "tag"}
-	if len(workScopeKinds) != len(expected) {
-		t.Errorf("workScopeKinds length = %d, want %d", len(workScopeKinds), len(expected))
-	}
-	for i, kind := range expected {
-		if workScopeKinds[i] != kind {
-			t.Errorf("workScopeKinds[%d] = %q, want %q", i, workScopeKinds[i], kind)
-		}
-	}
-}

@@ -16,7 +16,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 var attachmentContentTypes = []string{
@@ -25,6 +25,27 @@ var attachmentContentTypes = []string{
 	"evidence",
 	"testimonial",
 	"methodology",
+}
+
+// contentTypeOptions builds huh select options from attachmentContentTypes.
+// When current is empty (create), the first option is "(skip)" with value "".
+// When current is non-empty (edit), the first option is "(keep current)" with
+// the current value, and the current value is excluded from the remaining list.
+func contentTypeOptions(current string) []huh.Option[string] {
+	if current == "" {
+		opts := []huh.Option[string]{huh.NewOption("(skip)", "")}
+		for _, ct := range attachmentContentTypes {
+			opts = append(opts, huh.NewOption(ct, ct))
+		}
+		return opts
+	}
+	opts := []huh.Option[string]{huh.NewOption("(keep current)", current)}
+	for _, ct := range attachmentContentTypes {
+		if ct != current {
+			opts = append(opts, huh.NewOption(ct, ct))
+		}
+	}
+	return opts
 }
 
 type attachmentOption struct {
@@ -128,16 +149,35 @@ func promptContentURIs(w io.Writer) ([]map[string]any, error) {
 	var content []map[string]any
 	for {
 		var uri string
-		var err error
-		if len(content) == 0 {
-			uri, err = prompt.ReadRequired(w, os.Stdin, "Content URI", "URL to evidence/document")
-		} else {
-			uri, err = prompt.ReadOptionalField(w, os.Stdin, "Content URI", "enter to finish")
+		var addAnother bool
+
+		title := "Content URI"
+		desc := "URL to evidence/document"
+		if len(content) > 0 {
+			desc = "another URL, or leave blank to finish"
 		}
-		if err != nil {
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().Title(title).Description(desc).
+					Validate(func(s string) error {
+						if len(content) == 0 && strings.TrimSpace(s) == "" {
+							return errors.New("at least one content URI is required")
+						}
+						return nil
+					}).Value(&uri),
+				huh.NewConfirm().Title("Add another content URI?").Inline(true).Value(&addAnother),
+			),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				break
+			}
 			return nil, err
 		}
-		if uri == "" {
+
+		if strings.TrimSpace(uri) == "" {
 			break
 		}
 		content = append(content, map[string]any{
@@ -145,7 +185,7 @@ func promptContentURIs(w io.Writer) ([]map[string]any, error) {
 			"uri":   uri,
 		})
 
-		if !menu.Confirm(w, os.Stdin, "Add another content URI?") {
+		if !addAnother {
 			break
 		}
 	}
@@ -175,7 +215,13 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 	if hasFlags {
 		// Non-interactive: require title via flag or prompt fallback
 		if title == "" {
-			title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
+			err = huh.NewInput().Title("Title").Description("max 256 chars").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("title is required")
+					}
+					return nil
+				}).Value(&title).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
@@ -259,14 +305,7 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 				huh.NewSelect[string]().
 					Title("Content type").
 					Description("Category (optional)").
-					Options(
-						huh.NewOption("(skip)", ""),
-						huh.NewOption("report", "report"),
-						huh.NewOption("audit", "audit"),
-						huh.NewOption("evidence", "evidence"),
-						huh.NewOption("testimonial", "testimonial"),
-						huh.NewOption("methodology", "methodology"),
-					).
+					Options(contentTypeOptions("")...).
 					Value(&contentType),
 
 				huh.NewInput().
@@ -285,10 +324,10 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add location?").
-					Inline(true).
+					Description("Geographic coordinates for this attachment").
 					Value(&addLocation),
 			).Title("Linked Records"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
 			return err
@@ -400,51 +439,75 @@ func runAttachmentEdit(ctx context.Context, cmd *cli.Command) error {
 
 	if isInteractive {
 		// Interactive mode
-		newTitle, err = prompt.ReadLineWithDefault(w, os.Stdin, "Title", "required", currentTitle)
-		if err != nil {
+		newTitle = currentTitle
+		newShortDesc := currentShortDesc
+		newDesc := currentDesc
+		var editLocation bool
+
+		contentTypeOpts := contentTypeOptions(currentContentType)
+
+		existingLoc := mapMap(existing, "location")
+		locTitle := "Link location?"
+		if existingLoc != nil {
+			locTitle = "Replace location?"
+		}
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Title").
+					Description("Required").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("title is required")
+						}
+						return nil
+					}).
+					Value(&newTitle),
+
+				huh.NewSelect[string]().
+					Title("Content type").
+					Options(contentTypeOpts...).
+					Value(&newContentType),
+
+				huh.NewInput().
+					Title("Short description").
+					Description("Max 300 chars").
+					CharLimit(300).
+					Value(&newShortDesc),
+
+				huh.NewInput().
+					Title("Description").
+					Description("Max 3000 chars").
+					CharLimit(3000).
+					Value(&newDesc),
+			).Title("Edit Attachment"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(locTitle).
+					Description("Geographic coordinates for this attachment").
+					Value(&editLocation),
+			).Title("Linked Records"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
 
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Change content type?") {
-			selected, err := menu.SingleSelect(w, attachmentContentTypes, "content type",
-				func(s string) string { return s },
-				func(s string) string { return "" },
-			)
-			if err == nil {
-				newContentType = *selected
-			}
+		if newShortDesc != currentShortDesc {
+			existing["shortDescription"] = newShortDesc
+			changed = true
+		}
+		if newDesc != currentDesc {
+			existing["description"] = newDesc
+			changed = true
 		}
 
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Edit descriptions?") {
-			newShortDesc, err := prompt.ReadLineWithDefault(w, os.Stdin, "Short description", "max 300 chars", currentShortDesc)
-			if err != nil {
-				return err
-			}
-			if newShortDesc != currentShortDesc {
-				existing["shortDescription"] = newShortDesc
-				changed = true
-			}
-
-			newDesc, err := prompt.ReadLineWithDefault(w, os.Stdin, "Description", "max 3000 chars", currentDesc)
-			if err != nil {
-				return err
-			}
-			if newDesc != currentDesc {
-				existing["description"] = newDesc
-				changed = true
-			}
-		}
-
-		// Location
-		existingLoc := mapMap(existing, "location")
-		locLabel := "Add location?"
-		if existingLoc != nil {
-			locLabel = "Replace location?"
-		}
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, locLabel) {
+		if editLocation {
 			loc, err := selectLocation(ctx, client, w)
 			if err != nil {
 				return err

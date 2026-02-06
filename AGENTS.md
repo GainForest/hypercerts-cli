@@ -112,7 +112,9 @@ fmt.Fprintf(w, "Created record: %s\n", uri)
 
 ### Terminal formatting
 
-ANSI codes used directly (no color library): bold `\033[1m`, cyan `\033[36m`, green `\033[32m`, red `\033[31m`, yellow `\033[33m`, dim `\033[90m`, reset `\033[0m`.
+Interactive UI (forms, selects, confirms) uses `charmbracelet/huh` with `style.Theme()` for theming.
+Activity create uses a `bubbletea` model (`activityFormModel` in `cmd/activityform.go`) with a side-by-side live preview card styled with `lipgloss`.
+Status output uses ANSI codes directly: bold `\033[1m`, cyan `\033[36m`, green `\033[32m`, red `\033[31m`, yellow `\033[33m`, dim `\033[90m`, reset `\033[0m`.
 
 ### Current command tree
 
@@ -151,8 +153,8 @@ When creating an activity interactively, users can add these optional fields:
 - Table-driven tests for utility/validation functions
 - `setupTestXDG(t)` helper isolates XDG state using `t.TempDir()` + `t.Setenv()` + `xdg.Reload()`
 - CLI tests use `ExecuteWithOutput([]string{...}, &buf)` to capture stdout
-- `Confirm(w, r, msg)` and `ConfirmBulkDelete(w, r, count, type)` accept `io.Reader` for testability
-- Menu `render_test.go` tests render output to `bytes.Buffer`
+- `Confirm(w, r, msg)` and `ConfirmBulkDelete(w, r, count, type)` use huh in TTY, fall back to text prompts for tests
+- All interactive UI uses `style.Theme()` for consistent theming
 
 ## Project structure
 
@@ -165,6 +167,7 @@ hyper/
     util_test.go                    # Tests for shared helpers
     account.go                      # login / logout / status
     activity.go                     # Activity CRUD + selectActivity, cascading delete
+    activityform.go                 # Bubbletea model: activity create with live preview card
     measurement.go                  # Measurement CRUD + activity linking via subject strongRef
     location.go                     # Location CRUD (LP v1.0) + selectLocation, selectLocations
     attachment.go                   # Attachment CRUD + subjects[] array, content URIs
@@ -182,15 +185,12 @@ hyper/
       auth_test.go                  # Persist/load/wipe session tests
       client.go                     # CreateRecord, GetRecord, PutRecord, DeleteRecord, ListAllRecords
     menu/
-      confirm.go                    # Confirm(), ConfirmBulkDelete()
+      confirm.go                    # Confirm(), ConfirmBulkDelete() (huh-powered, text fallback for non-TTY)
       confirm_test.go               # Confirm/reject/auto-confirm tests
-      select.go                     # SingleSelect[T], SingleSelectWithCreate[T] (generic)
-      multiselect.go                # MultiSelect[T] (generic, checkboxes)
-      render.go                     # ANSI rendering for all menu types
-      render_test.go                # Render output verification
-    prompt/
-      prompt.go                     # ReadLine, ReadLineWithDefault, ReadOptionalField
-      prompt_test.go                # Default/override/optional input tests
+      select.go                     # SingleSelect[T], SingleSelectWithCreate[T] (generic, huh-powered)
+      multiselect.go                # MultiSelect[T] (generic, checkboxes, huh-powered)
+    style/
+      theme.go                      # Centralized huh theme (style.Theme())
   Makefile
   .golangci.yaml
   .goreleaser.yaml
@@ -216,10 +216,13 @@ hyper/
 ## Dependencies
 
 - `bluesky-social/indigo` v0.0.0-20260202181658 (ATProto SDK: identity, repo, API clients)
+- `charmbracelet/bubbletea` v1.3.6 (TUI framework: activity form with live preview)
+- `charmbracelet/huh` v0.8.0 (interactive forms, selects, confirms -- all TUI)
+- `charmbracelet/lipgloss` v1.1.0 (terminal styling: preview card layout)
 - `urfave/cli/v3` v3.6.2 (CLI framework)
 - `adrg/xdg` v0.5.3 (XDG directories)
 - `joho/godotenv` v1.5.1 (auto-loads `.env`)
-- `golang.org/x/term` v0.39.0 (raw terminal for menus)
+- `golang.org/x/term` v0.39.0 (TTY detection for huh/text fallback)
 
 ## Key technical details
 
@@ -254,15 +257,33 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 
 ### Interactive + non-interactive dual mode
 
-Commands check for flags first. If no flags, fall into interactive mode:
+Commands check for flags first. If no flags, fall into interactive mode. Activity create uses a bubbletea model with live preview; other commands use plain huh forms:
 
 ```go
 title := cmd.String("title")
 if title == "" {
-    title, err = prompt.ReadLineWithDefault(w, os.Stdin, "Title", "required", "")
-    // ...
+    // Activity create: bubbletea model with live preview card
+    result, err := runActivityForm()  // launches tea.Program with side-by-side layout
+    // Other commands: plain huh form
+    form := huh.NewForm(
+        huh.NewGroup(huh.NewInput().Title("Title").Value(&title)),
+    ).WithTheme(style.Theme())
+    form.Run()
 }
 ```
+
+### Bubbletea form with live preview (activityform.go)
+
+`activityFormModel` embeds a `huh.Form` and renders a live preview card alongside it using lipgloss:
+
+```go
+m := newActivityFormModel()           // creates form with .Key("fieldName") on each field
+final, err := tea.NewProgram(m).Run() // launches bubbletea
+fm := final.(activityFormModel)
+result := fm.collectResult()          // extracts form values via m.form.GetString("fieldName")
+```
+
+Key design: uses `.Key("fieldName")` + `m.form.GetString("fieldName")` instead of `&variable` binding, because the bubbletea model needs to read values in `View()` without direct variable refs. Linked records (contributors, locations, rights) are handled post-form since they need API calls.
 
 ### Contributor select-or-create
 
@@ -278,14 +299,7 @@ if isCreate {
 
 ### Activity optional fields
 
-Activity create uses `MultiSelect` on an `optionalField` slice to let users pick which optional fields to fill:
-
-```go
-selected, err := menu.MultiSelect(w, activityOptionalFields, "field",
-    func(f optionalField) string { return f.Label },
-    func(f optionalField) string { return f.Hint },
-)
-```
+Activity create presents all optional fields in the bubbletea form groups (Activity Details, Dates & Media, Linked Records). Users fill in what they want and skip the rest. The linked record confirms (`addContributors`, `addLocations`, `addRights`) trigger post-form API flows.
 
 ### Cascading delete
 

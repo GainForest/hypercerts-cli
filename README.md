@@ -1,18 +1,24 @@
 # Hypercerts CLI
 
+<p align="center">
+  <img src="demo.gif" alt="Hypercerts CLI demo" width="800" />
+</p>
+
 A command-line tool for managing [Hypercerts](https://hypercerts.org) on the [AT Protocol](https://atproto.com). Create, edit, and manage impact claims, measurements, locations, attachments, and contributors with interactive menus or scriptable flags.
 
-Built on [bluesky-social/indigo](https://github.com/bluesky-social/indigo) patterns with interactive terminal UI, designed for both human operators and CI/CD pipelines.
+Built on [bluesky-social/indigo](https://github.com/bluesky-social/indigo) patterns with [huh](https://github.com/charmbracelet/huh)-powered interactive terminal UI, designed for both human operators and CI/CD pipelines.
 
 ## Features
 
 - **Full CRUD** for activities, measurements, locations, attachments, evaluations, and contributors
-- **Interactive menus** with arrow key navigation and multi-select
+- **Beautiful interactive forms** powered by [charmbracelet/huh](https://github.com/charmbracelet/huh) -- themed inputs, selects, confirms, and multi-selects with keyboard navigation
+- **Live preview card** - activity creation shows a real-time preview card alongside the form as you type (powered by [bubbletea](https://github.com/charmbracelet/bubbletea) + [lipgloss](https://github.com/charmbracelet/lipgloss))
 - **Scriptable** - all commands accept flags for automation
 - **Linked records** - measurements and attachments link to activities via strongRefs
 - **Location Protocol v1.0** - geographic coordinates following the certified location standard
 - **Cascading deletes** - removing an activity cleans up linked measurements and attachments
 - **Session persistence** - auth tokens stored securely with automatic refresh
+- **Consistent theming** - all interactive UI shares a single centralized theme
 
 ## Install
 
@@ -25,7 +31,7 @@ curl -sSL https://raw.githubusercontent.com/GainForest/hypercerts-cli/main/insta
 ### Manual Install
 
 ```bash
-go install github.com/GainForest/hypercerts-cli/cmd/hc@v0.1.0
+go install github.com/GainForest/hypercerts-cli/cmd/hc@v0.1.1
 ```
 
 After installation, the `hc` command will be available in your terminal.
@@ -485,41 +491,109 @@ hc resolve -d handle.example.com   # Just the DID
 - Locations can also be linked to measurements and attachments
 - Evaluations link to activities via `subject` and can include `measurements[]`
 
-## Interactive Menus
+## Interactive UI
 
-When commands are run without an ID argument, `hc` shows interactive menus:
+All interactive UI is powered by [charmbracelet/huh](https://github.com/charmbracelet/huh) with the Charm theme, providing a consistent, polished terminal experience across every command.
 
-**Single selection** (for edit):
+### Activity Create with Live Preview
+
+Activity creation uses a [bubbletea](https://github.com/charmbracelet/bubbletea) model that renders a two-column layout: the form on the left, and a live-updating preview card on the right. As you type, the card updates in real-time:
+
 ```
-Select an activity:
+////  New Hypercert Activity  /////////////////////////////////////////////
 
-  > Rainforest Carbon Study        (2025-06-15)
-    Ocean Cleanup Initiative       (2025-03-01)
+  Activity Details                    ╭──────────────────────────────╮
+                                      │                              │
+  Title                               │  Rainforest Carbon Study     │
+  > Rainforest Carbon Study           │  12-month carbon measurement │
+                                      │                              │
+  Short description                   │  Scope                       │
+  > 12-month carbon measurement       │  climate-action              │
+                                      │                              │
+  Description                         │  Period                      │
+  >                                   │  2025-01-01 - 2025-12-31    │
+                                      │                              │
+  Work scope                          │                              │
+  > climate-action                    │                              │
+                                      ╰──────────────────────────────╯
 
-↑/↓ navigate · enter select · q cancel
+////  enter next  tab/shift+tab navigate  ctrl+c cancel  //////////////////
 ```
 
-**Multi-selection** (for delete):
+### Forms
+
+Other create and edit commands present grouped forms with validation, tab navigation between fields, and themed styling:
+
 ```
-Select activities: 2 selected
+  Edit Activity
 
-  > [x] Rainforest Carbon Study    (2025-06-15)
-    [x] Ocean Cleanup Initiative   (2025-03-01)
-    [ ] Urban Garden Project       (2025-04-15)
+  Title
+  > Rainforest Carbon Study
 
-↑/↓ navigate · space toggle · a all · enter confirm · q cancel
+  Short description
+  > 12-month carbon sequestration measurement
+
+  Edit optional fields?  Yes / No
+
+  enter next  tab/shift+tab navigate  ctrl+c cancel
 ```
 
-**Select or create** (when linking contributors):
+### Single Selection (for edit)
+
 ```
-Select a contributor:
+  Select an activity
 
-  > Alice Chen                     (did:plc:abc123)
-    Bob Martinez                   (did:plc:xyz789)
+  > Rainforest Carbon Study        2025-06-15
+    Ocean Cleanup Initiative       2025-03-01
 
-  + Create new contributor...
+  ↑/↓ navigate  / filter  enter select  ctrl+c cancel
+```
 
-↑/↓ navigate · enter select · q cancel
+### Multi-Selection (for delete)
+
+```
+  Select activities
+
+  > [x] Rainforest Carbon Study    2025-06-15
+    [x] Ocean Cleanup Initiative   2025-03-01
+    [ ] Urban Garden Project       2025-04-15
+
+  ↑/↓ navigate  x toggle  ctrl+a all  enter confirm  ctrl+c cancel
+```
+
+### Select or Create (when linking records)
+
+```
+  Select a contributor
+
+  > Alice Chen                     did:plc:abc123
+    Bob Martinez                   did:plc:xyz789
+    + Create new contributor...
+
+  ↑/↓ navigate  enter select  ctrl+c cancel
+```
+
+### Confirmations
+
+Delete confirmations use themed yes/no prompts:
+
+```
+  Delete 3 activities?
+  This action cannot be undone
+
+  Yes / > No
+
+  ←/→ toggle  enter confirm
+```
+
+### Theming
+
+All forms, selects, and confirms share a single theme defined in `internal/style/theme.go`. To change the theme for the entire CLI, edit one line:
+
+```go
+func Theme() *huh.Theme {
+    return huh.ThemeCharm()    // or ThemeDracula(), ThemeCatppuccin(), ThemeBase16()
+}
 ```
 
 ## Lexicon Collections
@@ -591,6 +665,7 @@ hypercerts-cli/
 │   ├── util_test.go                 # Tests for helpers
 │   ├── account.go                   # login / logout / status
 │   ├── activity.go                  # Activity CRUD + selectActivity, cascading delete
+│   ├── activityform.go              # Bubbletea model: activity create with live preview card
 │   ├── measurement.go               # Measurement CRUD + selectActivity linking
 │   ├── location.go                  # Location CRUD + selectLocation, selectLocations
 │   ├── attachment.go                # Attachment CRUD + content URIs, subjects[]
@@ -610,16 +685,13 @@ hypercerts-cli/
     │   └── client.go                # Record CRUD (Create/Get/Put/Delete/ListAll)
     │
     ├── menu/
-    │   ├── confirm.go               # Confirm(), ConfirmBulkDelete()
+    │   ├── confirm.go               # Confirm(), ConfirmBulkDelete() (huh + text fallback)
     │   ├── confirm_test.go
     │   ├── select.go                # SingleSelect[T], SingleSelectWithCreate[T]
-    │   ├── multiselect.go           # MultiSelect[T]
-    │   ├── render.go                # ANSI rendering
-    │   └── render_test.go
+    │   └── multiselect.go           # MultiSelect[T]
     │
-    └── prompt/
-        ├── prompt.go                # ReadLine, ReadLineWithDefault, ReadOptionalField
-        └── prompt_test.go
+    └── style/
+        └── theme.go                 # Centralized huh theme (style.Theme())
 ```
 
 ### Key Dependencies
@@ -627,10 +699,13 @@ hypercerts-cli/
 | Dependency | Version | Purpose |
 |------------|---------|---------|
 | `bluesky-social/indigo` | v0.0.0-20260202 | ATProto SDK (identity, repo, API) |
+| `charmbracelet/bubbletea` | v1.3.6 | TUI framework (activity form with live preview) |
+| `charmbracelet/huh` | v0.8.0 | Interactive forms, selects, confirms (all TUI) |
+| `charmbracelet/lipgloss` | v1.1.0 | Terminal styling (preview card layout) |
 | `urfave/cli/v3` | v3.6.2 | CLI framework |
 | `adrg/xdg` | v0.5.3 | XDG directories |
 | `joho/godotenv` | v1.5.1 | `.env` file loading |
-| `golang.org/x/term` | v0.39.0 | Raw terminal for menus |
+| `golang.org/x/term` | v0.39.0 | TTY detection for huh/text fallback |
 
 ### Adding a New Record Type
 

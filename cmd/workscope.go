@@ -17,10 +17,8 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
-
-var workScopeKinds = []string{"topic", "language", "domain", "method", "tag"}
 
 // keyPattern validates lowercase-hyphenated keys
 var keyPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -193,15 +191,15 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add parent tag?").
-					Inline(true).
+					Description("Link to a broader scope tag").
 					Value(&addParent),
 
 				huh.NewConfirm().
 					Title("Add aliases?").
-					Inline(true).
+					Description("Alternative names for this tag").
 					Value(&addAliases),
 			).Title("Hierarchy"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
 			return err
@@ -234,14 +232,31 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 		if addAliases {
 			var aliases []string
 			for {
-				alias, err := prompt.ReadOptionalField(w, os.Stdin, "Alias", "alternative name, or blank to finish")
-				if err != nil {
+				var alias string
+				var addMore bool
+
+				form := huh.NewForm(
+					huh.NewGroup(
+						huh.NewInput().Title("Alias").Description("alternative name, or leave blank to finish").Value(&alias),
+						huh.NewConfirm().Title("Add another alias?").Inline(true).Value(&addMore),
+					),
+				).WithTheme(style.Theme())
+
+				if err := form.Run(); err != nil {
+					if err == huh.ErrUserAborted {
+						break
+					}
 					return err
 				}
-				if alias == "" {
+
+				if strings.TrimSpace(alias) == "" {
 					break
 				}
 				aliases = append(aliases, alias)
+
+				if !addMore {
+					break
+				}
 			}
 			if len(aliases) > 0 {
 				record["aliases"] = aliases
@@ -310,33 +325,85 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 	isInteractive := cmd.String("key") == "" && cmd.String("label") == "" && cmd.String("kind") == ""
 
 	if isInteractive {
-		// Key
-		newKey, err := prompt.ReadLineWithDefault(w, os.Stdin, "Key", "required, lowercase-hyphenated", currentKey)
-		if err != nil {
-			return err
-		}
-		if newKey != currentKey {
-			if !keyPattern.MatchString(newKey) {
-				return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
-			}
-			existing["key"] = newKey
-			changed = true
+		newKey := currentKey
+		newLabel := currentLabel
+		newKind := currentKind
+		newDesc := currentDesc
+		var editParent bool
+
+		existingParent := mapMap(existing, "parent")
+		parentTitle := "Link parent tag?"
+		if existingParent != nil {
+			parentTitle = "Replace parent tag?"
 		}
 
-		// Label
-		newLabel, err := prompt.ReadLineWithDefault(w, os.Stdin, "Label", "required", currentLabel)
-		if err != nil {
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Key").
+					Description("Required, lowercase-hyphenated").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("key is required")
+						}
+						if !keyPattern.MatchString(s) {
+							return errors.New("must be lowercase letters/numbers separated by hyphens")
+						}
+						return nil
+					}).
+					Value(&newKey),
+
+				huh.NewInput().
+					Title("Label").
+					Description("Required").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("label is required")
+						}
+						return nil
+					}).
+					Value(&newLabel),
+
+				huh.NewSelect[string]().
+					Title("Kind").
+					Options(
+						huh.NewOption("(keep current)", currentKind),
+						huh.NewOption("topic - subject area", "topic"),
+						huh.NewOption("language - programming/natural", "language"),
+						huh.NewOption("domain - field of study", "domain"),
+						huh.NewOption("method - approach/technique", "method"),
+						huh.NewOption("tag - general label", "tag"),
+					).
+					Value(&newKind),
+
+				huh.NewInput().
+					Title("Description").
+					Description("Optional").
+					Value(&newDesc),
+			).Title("Edit Work Scope Tag"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(parentTitle).
+					Description("Link to a broader scope tag").
+					Value(&editParent),
+			).Title("Linked Records"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
+		}
+
+		if newKey != currentKey {
+			existing["key"] = newKey
+			changed = true
 		}
 		if newLabel != currentLabel {
 			existing["label"] = newLabel
 			changed = true
-		}
-
-		// Kind
-		newKind, err := prompt.ReadLineWithDefault(w, os.Stdin, "Kind", "topic/language/domain/method/tag", currentKind)
-		if err != nil {
-			return err
 		}
 		if newKind != currentKind {
 			if newKind == "" {
@@ -345,12 +412,6 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 				existing["kind"] = newKind
 			}
 			changed = true
-		}
-
-		// Description
-		newDesc, err := prompt.ReadLineWithDefault(w, os.Stdin, "Description", "optional", currentDesc)
-		if err != nil {
-			return err
 		}
 		if newDesc != currentDesc {
 			if newDesc == "" {
@@ -361,14 +422,7 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 			changed = true
 		}
 
-		// Parent
-		existingParent := mapMap(existing, "parent")
-		parentLabel := "Add parent tag?"
-		if existingParent != nil {
-			parentLabel = "Replace parent tag?"
-		}
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, parentLabel) {
+		if editParent {
 			parent, err := selectWorkScope(ctx, client, w)
 			if err != nil && err != menu.ErrCancelled {
 				return err

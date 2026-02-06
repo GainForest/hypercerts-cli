@@ -16,7 +16,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type contributorOption struct {
@@ -130,7 +130,7 @@ func runContributorCreate(ctx context.Context, cmd *cli.Command) error {
 					CharLimit(100).
 					Value(&displayName),
 			).Title("Contributor"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
 			return err
@@ -211,15 +211,28 @@ func runContributorEdit(ctx context.Context, cmd *cli.Command) error {
 	newName := cmd.String("name")
 
 	if newIdentifier == "" && newName == "" {
-		currentID := mapStr(existing, "identifier")
-		currentName := mapStr(existing, "displayName")
+		newIdentifier = mapStr(existing, "identifier")
+		newName = mapStr(existing, "displayName")
 
-		newIdentifier, err = prompt.ReadLineWithDefault(w, os.Stdin, "Identifier", "DID or profile URI", currentID)
-		if err != nil {
-			return err
-		}
-		newName, err = prompt.ReadLineWithDefault(w, os.Stdin, "Display name", "max 100 chars", currentName)
-		if err != nil {
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Identifier").
+					Description("DID or profile URI").
+					Value(&newIdentifier),
+
+				huh.NewInput().
+					Title("Display name").
+					Description("Max 100 chars").
+					CharLimit(100).
+					Value(&newName),
+			).Title("Edit Contributor"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
 	}
@@ -352,16 +365,22 @@ func selectContributor(ctx context.Context, client *atclient.APIClient, w io.Wri
 }
 
 func createContributorInline(ctx context.Context, client *atclient.APIClient, w io.Writer) (*contributorOption, error) {
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "  \033[1mNew Contributor\033[0m")
+	var identifier, displayName string
 
-	identifier, err := prompt.ReadRequired(w, os.Stdin, "  Identifier", "DID or profile URI")
-	if err != nil {
-		return nil, err
-	}
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("Identifier").Description("DID or profile URI").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("identifier is required")
+					}
+					return nil
+				}).Value(&identifier),
+			huh.NewInput().Title("Display name").Description("max 100 chars, optional").CharLimit(100).Value(&displayName),
+		).Title("New Contributor"),
+	).WithTheme(style.Theme())
 
-	displayName, err := prompt.ReadOptionalField(w, os.Stdin, "  Display name", "max 100 chars, optional")
-	if err != nil {
+	if err := form.Run(); err != nil {
 		return nil, err
 	}
 
@@ -381,11 +400,9 @@ func createContributorInline(ctx context.Context, client *atclient.APIClient, w 
 		return nil, fmt.Errorf("failed to create contributor: %w", err)
 	}
 
-	fmt.Fprintf(w, "  \033[32m\u2713\033[0m Created contributor: %s\n", uri)
+	fmt.Fprintf(w, "\n")
 	return &contributorOption{
-		URI:         uri,
-		CID:         cid,
-		Identifier:  identifier,
-		DisplayName: displayName,
+		URI: uri, CID: cid,
+		Identifier: identifier, DisplayName: displayName,
 	}, nil
 }

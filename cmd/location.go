@@ -17,7 +17,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type locationOption struct {
@@ -115,35 +115,40 @@ func selectLocations(ctx context.Context, client *atclient.APIClient, w io.Write
 }
 
 func createLocationInline(ctx context.Context, client *atclient.APIClient, w io.Writer) (*locationOption, error) {
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "  \033[1mNew Location\033[0m")
+	var latStr, lonStr, name, description string
 
-	latStr, err := prompt.ReadLineWithDefault(w, os.Stdin, "  Latitude", "-90 to 90", "")
-	if err != nil {
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("Latitude").Description("-90 to 90").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("latitude is required")
+					}
+					return nil
+				}).Value(&latStr),
+			huh.NewInput().Title("Longitude").Description("-180 to 180").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("longitude is required")
+					}
+					return nil
+				}).Value(&lonStr),
+			huh.NewInput().Title("Name").Description("optional, max 100 graphemes").CharLimit(100).Value(&name),
+			huh.NewInput().Title("Description").Description("optional, max 500 graphemes").CharLimit(500).Value(&description),
+		).Title("New Location"),
+	).WithTheme(style.Theme())
+
+	if err := form.Run(); err != nil {
 		return nil, err
 	}
+
 	lat, ok := parseFloat(latStr)
 	if !ok || lat < -90 || lat > 90 {
 		return nil, fmt.Errorf("invalid latitude: must be between -90 and 90")
 	}
-
-	lonStr, err := prompt.ReadLineWithDefault(w, os.Stdin, "  Longitude", "-180 to 180", "")
-	if err != nil {
-		return nil, err
-	}
 	lon, ok := parseFloat(lonStr)
 	if !ok || lon < -180 || lon > 180 {
 		return nil, fmt.Errorf("invalid longitude: must be between -180 and 180")
-	}
-
-	name, err := prompt.ReadOptionalField(w, os.Stdin, "  Name", "optional, max 100 graphemes")
-	if err != nil {
-		return nil, err
-	}
-
-	description, err := prompt.ReadOptionalField(w, os.Stdin, "  Description", "optional, max 500 graphemes")
-	if err != nil {
-		return nil, err
 	}
 
 	record := buildLocationRecord(lat, lon, name, description)
@@ -157,15 +162,11 @@ func createLocationInline(ctx context.Context, client *atclient.APIClient, w io.
 		strconv.FormatFloat(lat, 'f', -1, 64),
 		strconv.FormatFloat(lon, 'f', -1, 64))
 
-	fmt.Fprintf(w, "  \033[32m✓\033[0m Created location: %s\n", uri)
+	fmt.Fprintf(w, "\n")
 	return &locationOption{
-		URI:         uri,
-		CID:         cid,
-		Rkey:        extractRkey(uri),
-		Name:        name,
-		Coordinates: coords,
-		Description: description,
-		Created:     time.Now().Format("2006-01-02"),
+		URI: uri, CID: cid, Rkey: extractRkey(uri),
+		Name: name, Coordinates: coords, Description: description,
+		Created: time.Now().Format("2006-01-02"),
 	}, nil
 }
 
@@ -220,7 +221,7 @@ func runLocationCreate(ctx context.Context, cmd *cli.Command) error {
 					CharLimit(500).
 					Value(&description),
 			).Title("Location"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
 			return err
@@ -321,20 +322,39 @@ func runLocationEdit(ctx context.Context, cmd *cli.Command) error {
 
 	if newLatStr == "" && newLonStr == "" && newName == "" && newDesc == "" {
 		// Interactive mode
-		newLatStr, err = prompt.ReadLineWithDefault(w, os.Stdin, "Latitude", "-90 to 90", currentLatStr)
-		if err != nil {
-			return err
-		}
-		newLonStr, err = prompt.ReadLineWithDefault(w, os.Stdin, "Longitude", "-180 to 180", currentLonStr)
-		if err != nil {
-			return err
-		}
-		newName, err = prompt.ReadLineWithDefault(w, os.Stdin, "Name", "optional", currentName)
-		if err != nil {
-			return err
-		}
-		newDesc, err = prompt.ReadLineWithDefault(w, os.Stdin, "Description", "optional", currentDesc)
-		if err != nil {
+		newLatStr = currentLatStr
+		newLonStr = currentLonStr
+		newName = currentName
+		newDesc = currentDesc
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Latitude").
+					Description("-90 to 90").
+					Value(&newLatStr),
+
+				huh.NewInput().
+					Title("Longitude").
+					Description("-180 to 180").
+					Value(&newLonStr),
+
+				huh.NewInput().
+					Title("Name").
+					Description("Optional").
+					Value(&newName),
+
+				huh.NewInput().
+					Title("Description").
+					Description("Optional").
+					Value(&newDesc),
+			).Title("Edit Location"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
 	}

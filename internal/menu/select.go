@@ -5,7 +5,10 @@ import (
 	"io"
 	"os"
 
+	"github.com/charmbracelet/huh"
 	"golang.org/x/term"
+
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 // ErrCancelled is returned when the user cancels an interactive menu.
@@ -14,8 +17,13 @@ var ErrCancelled = fmt.Errorf("cancelled")
 // ErrNonInteractive is returned when a terminal is required but unavailable.
 var ErrNonInteractive = fmt.Errorf("non-interactive mode (use CLI flags instead)")
 
-// SingleSelect displays an interactive single-select menu in an alternate screen buffer.
-func SingleSelect[T any](w io.Writer, items []T, itemType string, getName func(T) string, getInfo func(T) string) (*T, error) {
+// defaultHeight is the number of visible options before scrolling kicks in.
+const defaultHeight = 10
+
+// SingleSelect displays an interactive single-select menu using huh.
+// The getName callback provides the display label; getInfo provides
+// supplementary text shown in parentheses beside the label.
+func SingleSelect[T comparable](w io.Writer, items []T, itemType string, getName func(T) string, getInfo func(T) string) (*T, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("no %ss found", itemType)
 	}
@@ -25,124 +33,99 @@ func SingleSelect[T any](w io.Writer, items []T, itemType string, getName func(T
 		return nil, ErrNonInteractive
 	}
 
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return nil, fmt.Errorf("terminal error: %w", err)
+	opts := buildOptions(items, getName, getInfo)
+
+	var selected int
+	sel := huh.NewSelect[int]().
+		Title("Select a " + itemType).
+		Options(opts...).
+		Height(selectHeight(len(opts))).
+		Value(&selected)
+
+	if len(items) > 5 {
+		sel = sel.Filtering(true)
 	}
 
-	fmt.Fprint(os.Stdout, "\033[?1049h\033[H")
+	form := huh.NewForm(huh.NewGroup(sel)).
+		WithTheme(style.Theme())
 
-	selected := 0
-	buf := make([]byte, 3)
-	for {
-		RenderSingleSelect(os.Stdout, items, itemType, selected, getName, getInfo)
-
-		n, err := os.Stdin.Read(buf)
-		if err != nil {
-			fmt.Fprint(os.Stdout, "\033[?1049l")
-			_ = term.Restore(fd, oldState)
-			return nil, err
+	if err := form.Run(); err != nil {
+		if err == huh.ErrUserAborted {
+			return nil, ErrCancelled
 		}
-
-		if n == 1 {
-			switch buf[0] {
-			case 13, 10: // Enter
-				fmt.Fprint(os.Stdout, "\033[?1049l")
-				_ = term.Restore(fd, oldState)
-				fmt.Fprintf(w, "Selected: %s\n\n", getName(items[selected]))
-				return &items[selected], nil
-			case 'q', 3: // q or Ctrl+C
-				fmt.Fprint(os.Stdout, "\033[?1049l")
-				_ = term.Restore(fd, oldState)
-				return nil, ErrCancelled
-			case 'k':
-				if selected > 0 {
-					selected--
-				}
-			case 'j':
-				if selected < len(items)-1 {
-					selected++
-				}
-			}
-		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
-			switch buf[2] {
-			case 65: // Up
-				if selected > 0 {
-					selected--
-				}
-			case 66: // Down
-				if selected < len(items)-1 {
-					selected++
-				}
-			}
-		}
+		return nil, err
 	}
+
+	fmt.Fprintf(w, "Selected: %s\n\n", getName(items[selected]))
+	return &items[selected], nil
 }
 
-// SingleSelectWithCreate is like SingleSelect but adds a "Create new..." option at the bottom.
-// Returns (item, isCreate, error). If isCreate is true, the item pointer is nil.
-func SingleSelectWithCreate[T any](w io.Writer, items []T, itemType string, getName func(T) string, getInfo func(T) string, createLabel string) (*T, bool, error) {
-	totalOptions := len(items) + 1
-	createNewIndex := len(items)
-
+// SingleSelectWithCreate is like SingleSelect but adds a "Create new..." option
+// at the bottom. Returns (item, isCreate, error). If isCreate is true, the item
+// pointer is nil.
+func SingleSelectWithCreate[T comparable](w io.Writer, items []T, itemType string, getName func(T) string, getInfo func(T) string, createLabel string) (*T, bool, error) {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return nil, false, ErrNonInteractive
 	}
 
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return nil, false, fmt.Errorf("terminal error: %w", err)
+	createIndex := len(items)
+	opts := buildOptions(items, getName, getInfo)
+	opts = append(opts, huh.NewOption("+ "+createLabel, createIndex))
+
+	var selected int
+	sel := huh.NewSelect[int]().
+		Title("Select a " + itemType).
+		Options(opts...).
+		Height(selectHeight(len(opts))).
+		Value(&selected)
+
+	if len(items) > 5 {
+		sel = sel.Filtering(true)
 	}
 
-	fmt.Fprint(os.Stdout, "\033[?1049h\033[H")
+	form := huh.NewForm(huh.NewGroup(sel)).
+		WithTheme(style.Theme())
 
-	selected := 0
-	buf := make([]byte, 3)
-	for {
-		RenderSingleSelectWithCreate(os.Stdout, items, itemType, selected, createNewIndex, getName, getInfo, createLabel)
-
-		n, err := os.Stdin.Read(buf)
-		if err != nil {
-			fmt.Fprint(os.Stdout, "\033[?1049l")
-			_ = term.Restore(fd, oldState)
-			return nil, false, err
+	if err := form.Run(); err != nil {
+		if err == huh.ErrUserAborted {
+			return nil, false, ErrCancelled
 		}
-
-		if n == 1 {
-			switch buf[0] {
-			case 13, 10: // Enter
-				fmt.Fprint(os.Stdout, "\033[?1049l")
-				_ = term.Restore(fd, oldState)
-				if selected == createNewIndex {
-					return nil, true, nil
-				}
-				fmt.Fprintf(w, "Selected: %s\n", getName(items[selected]))
-				return &items[selected], false, nil
-			case 'q', 3:
-				fmt.Fprint(os.Stdout, "\033[?1049l")
-				_ = term.Restore(fd, oldState)
-				return nil, false, ErrCancelled
-			case 'k':
-				if selected > 0 {
-					selected--
-				}
-			case 'j':
-				if selected < totalOptions-1 {
-					selected++
-				}
-			}
-		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
-			switch buf[2] {
-			case 65:
-				if selected > 0 {
-					selected--
-				}
-			case 66:
-				if selected < totalOptions-1 {
-					selected++
-				}
-			}
-		}
+		return nil, false, err
 	}
+
+	if selected == createIndex {
+		return nil, true, nil
+	}
+
+	fmt.Fprintf(w, "Selected: %s\n", getName(items[selected]))
+	return &items[selected], false, nil
+}
+
+// buildOptions converts a slice of items into huh.Option values keyed by index.
+// The display label is formed from getName, with getInfo appended as dim
+// supplementary text when non-empty.
+func buildOptions[T any](items []T, getName func(T) string, getInfo func(T) string) []huh.Option[int] {
+	opts := make([]huh.Option[int], len(items))
+	for i, item := range items {
+		label := getName(item)
+		if info := getInfo(item); info != "" {
+			label = fmt.Sprintf("%s  %s", label, info)
+		}
+		opts[i] = huh.NewOption(label, i)
+	}
+	return opts
+}
+
+// selectHeight returns a sensible height for the options viewport based on the
+// number of options, capping at defaultHeight.
+func selectHeight(n int) int {
+	h := n + 1 // +1 for breathing room
+	if h > defaultHeight {
+		return defaultHeight
+	}
+	if h < 3 {
+		return 3
+	}
+	return h
 }

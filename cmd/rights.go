@@ -16,7 +16,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type rightsOption struct {
@@ -104,21 +104,35 @@ func selectRights(ctx context.Context, client *atclient.APIClient, w io.Writer) 
 }
 
 func createRightsInline(ctx context.Context, client *atclient.APIClient, w io.Writer) (*rightsOption, error) {
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "  \033[1mNew Rights\033[0m")
+	var name, rightsType, description string
 
-	name, err := prompt.ReadRequired(w, os.Stdin, "  Rights name", "max 100 chars")
-	if err != nil {
-		return nil, err
-	}
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().Title("Rights name").Description("max 100 chars").CharLimit(100).
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("rights name is required")
+					}
+					return nil
+				}).Value(&name),
+			huh.NewInput().Title("Rights type").Description("short ID max 10 chars, e.g. CC-BY-4.0").CharLimit(10).
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("rights type is required")
+					}
+					return nil
+				}).Value(&rightsType),
+			huh.NewInput().Title("Description").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("description is required")
+					}
+					return nil
+				}).Value(&description),
+		).Title("New Rights"),
+	).WithTheme(style.Theme())
 
-	rightsType, err := prompt.ReadRequired(w, os.Stdin, "  Rights type", "short ID max 10 chars, e.g. CC-BY-4.0")
-	if err != nil {
-		return nil, err
-	}
-
-	description, err := prompt.ReadRequired(w, os.Stdin, "  Description", "")
-	if err != nil {
+	if err := form.Run(); err != nil {
 		return nil, err
 	}
 
@@ -135,15 +149,11 @@ func createRightsInline(ctx context.Context, client *atclient.APIClient, w io.Wr
 		return nil, fmt.Errorf("failed to create rights: %w", err)
 	}
 
-	fmt.Fprintf(w, "  \033[32m✓\033[0m Created rights: %s\n", uri)
+	fmt.Fprintf(w, "\n")
 	return &rightsOption{
-		URI:         uri,
-		CID:         cid,
-		Rkey:        extractRkey(uri),
-		Name:        name,
-		Type:        rightsType,
-		Description: description,
-		Created:     time.Now().Format("2006-01-02"),
+		URI: uri, CID: cid, Rkey: extractRkey(uri),
+		Name: name, Type: rightsType, Description: description,
+		Created: time.Now().Format("2006-01-02"),
 	}, nil
 }
 
@@ -208,7 +218,7 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 					Description("URL to legal document (optional)").
 					Value(&attachmentURI),
 			).Title("Rights Details"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
 			return err
@@ -216,19 +226,37 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 	} else {
 		// Non-interactive: some flags provided, prompt for any missing required fields
 		if name == "" {
-			name, err = prompt.ReadRequired(w, os.Stdin, "Rights name", "max 100 chars")
+			err = huh.NewInput().Title("Rights name").Description("max 100 chars").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("rights name is required")
+					}
+					return nil
+				}).Value(&name).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if rightsType == "" {
-			rightsType, err = prompt.ReadRequired(w, os.Stdin, "Rights type", "short ID max 10 chars, e.g. CC-BY-4.0")
+			err = huh.NewInput().Title("Rights type").Description("short ID max 10 chars, e.g. CC-BY-4.0").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("rights type is required")
+					}
+					return nil
+				}).Value(&rightsType).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if description == "" {
-			description, err = prompt.ReadRequired(w, os.Stdin, "Description", "")
+			err = huh.NewInput().Title("Description").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("description is required")
+					}
+					return nil
+				}).Value(&description).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
@@ -308,42 +336,74 @@ func runRightsEdit(ctx context.Context, cmd *cli.Command) error {
 
 	if isInteractive {
 		// Interactive mode
-		newName, err = prompt.ReadLineWithDefault(w, os.Stdin, "Rights name", "required", currentName)
-		if err != nil {
-			return err
-		}
-		newType, err = prompt.ReadLineWithDefault(w, os.Stdin, "Rights type", "required", currentType)
-		if err != nil {
-			return err
-		}
-		newDesc, err = prompt.ReadLineWithDefault(w, os.Stdin, "Description", "required", currentDesc)
-		if err != nil {
-			return err
-		}
+		newName = currentName
+		newType = currentType
+		newDesc = currentDesc
 
-		// Optional attachment
+		// Check for existing attachment
 		existingAttachment := mapMap(existing, "attachment")
-		attachmentLabel := "Add attachment URI?"
 		currentAttachmentURI := ""
 		if existingAttachment != nil {
 			currentAttachmentURI = mapStr(existingAttachment, "uri")
-			if currentAttachmentURI != "" {
-				attachmentLabel = "Replace attachment URI?"
-			}
 		}
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, attachmentLabel) {
-			newAttachment, err := prompt.ReadLineWithDefault(w, os.Stdin, "Attachment URI", "URL to legal document", currentAttachmentURI)
-			if err != nil {
-				return err
+		newAttachmentURI := currentAttachmentURI
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Rights name").
+					Description("Max 100 chars").
+					CharLimit(100).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("rights name is required")
+						}
+						return nil
+					}).
+					Value(&newName),
+
+				huh.NewInput().
+					Title("Rights type").
+					Description("Short ID, e.g. CC-BY-4.0").
+					CharLimit(10).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("rights type is required")
+						}
+						return nil
+					}).
+					Value(&newType),
+
+				huh.NewInput().
+					Title("Description").
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("description is required")
+						}
+						return nil
+					}).
+					Value(&newDesc),
+
+				huh.NewInput().
+					Title("Attachment URI").
+					Description("URL to legal document (optional)").
+					Value(&newAttachmentURI),
+			).Title("Edit Rights"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
 			}
-			if newAttachment != "" && newAttachment != currentAttachmentURI {
-				existing["attachment"] = map[string]any{
-					"$type": "org.hypercerts.defs#uri",
-					"uri":   newAttachment,
-				}
-				changed = true
+			return err
+		}
+
+		if newAttachmentURI != "" && newAttachmentURI != currentAttachmentURI {
+			existing["attachment"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   newAttachmentURI,
 			}
+			changed = true
 		}
 	}
 

@@ -16,7 +16,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type activityOption struct {
@@ -93,13 +93,25 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 	if hasFlags {
 		// Non-interactive: require title and description via flags or prompt fallback
 		if title == "" {
-			title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
+			err = huh.NewInput().Title("Title").Description("max 256 chars").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("title is required")
+					}
+					return nil
+				}).Value(&title).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if shortDesc == "" {
-			shortDesc, err = prompt.ReadRequired(w, os.Stdin, "Short description", "max 300 chars")
+			err = huh.NewInput().Title("Short description").Description("max 300 chars").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("short description is required")
+					}
+					return nil
+				}).Value(&shortDesc).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
@@ -107,115 +119,42 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 		record["title"] = title
 		record["shortDescription"] = shortDesc
 	} else {
-		// Interactive: show all fields at once using huh form
-		var description, workScope, startDate, endDate, imageURI string
-		var addContributors, addLocations, addRights bool
-
-		form := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Title").
-					Description("Main title for this hypercert").
-					CharLimit(256).
-					Validate(func(s string) error {
-						if strings.TrimSpace(s) == "" {
-							return errors.New("title is required")
-						}
-						return nil
-					}).
-					Value(&title),
-
-				huh.NewInput().
-					Title("Short description").
-					Description("Brief summary of the activity").
-					CharLimit(300).
-					Validate(func(s string) error {
-						if strings.TrimSpace(s) == "" {
-							return errors.New("short description is required")
-						}
-						return nil
-					}).
-					Value(&shortDesc),
-
-				huh.NewInput().
-					Title("Description").
-					Description("Longer description (optional)").
-					CharLimit(3000).
-					Value(&description),
-
-				huh.NewInput().
-					Title("Work scope").
-					Description("Free-form scope of work (optional)").
-					Value(&workScope),
-			).Title("Activity Details"),
-
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Start date").
-					Description("YYYY-MM-DD (optional)").
-					Value(&startDate),
-
-				huh.NewInput().
-					Title("End date").
-					Description("YYYY-MM-DD (optional)").
-					Value(&endDate),
-
-				huh.NewInput().
-					Title("Image URI").
-					Description("URL to hypercert image (optional)").
-					Value(&imageURI),
-			).Title("Dates & Media"),
-
-			huh.NewGroup(
-				huh.NewConfirm().
-					Title("Add contributors?").
-					Inline(true).
-					Value(&addContributors),
-
-				huh.NewConfirm().
-					Title("Add locations?").
-					Inline(true).
-					Value(&addLocations),
-
-				huh.NewConfirm().
-					Title("Add rights?").
-					Inline(true).
-					Value(&addRights),
-			).Title("Linked Records"),
-		).WithTheme(huh.ThemeBase16())
-
-		err := form.Run()
+		// Interactive: bubbletea form with live preview card
+		result, err := runActivityForm()
 		if err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
 
-		record["title"] = title
-		record["shortDescription"] = shortDesc
+		record["title"] = result.Title
+		record["shortDescription"] = result.ShortDesc
 
-		if description != "" {
-			record["description"] = description
+		if result.Description != "" {
+			record["description"] = result.Description
 		}
-		if workScope != "" {
+		if result.WorkScope != "" {
 			record["workScope"] = map[string]any{
 				"$type": atproto.CollectionActivity + "#workScopeString",
-				"scope": workScope,
+				"scope": result.WorkScope,
 			}
 		}
-		if startDate != "" {
-			record["startDate"] = normalizeDate(startDate)
+		if result.StartDate != "" {
+			record["startDate"] = normalizeDate(result.StartDate)
 		}
-		if endDate != "" {
-			record["endDate"] = normalizeDate(endDate)
+		if result.EndDate != "" {
+			record["endDate"] = normalizeDate(result.EndDate)
 		}
-		if imageURI != "" {
+		if result.ImageURI != "" {
 			record["image"] = map[string]any{
 				"$type": "org.hypercerts.defs#uri",
-				"uri":   imageURI,
+				"uri":   result.ImageURI,
 			}
 		}
 
-		// Handle linked records interactively (need API calls)
-		if addContributors {
+		// Handle linked records interactively (need API calls, run after bubbletea exits)
+		if result.AddContributors {
 			contributors, err := promptContributors(ctx, client, w)
 			if err != nil {
 				return err
@@ -224,7 +163,7 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 				record["contributors"] = contributors
 			}
 		}
-		if addLocations {
+		if result.AddLocations {
 			locations, err := selectLocations(ctx, client, w)
 			if err != nil {
 				return err
@@ -237,7 +176,7 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 				record["locations"] = refs
 			}
 		}
-		if addRights {
+		if result.AddRights {
 			rights, err := selectRights(ctx, client, w)
 			if err != nil {
 				return err
@@ -257,8 +196,6 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 func promptContributors(ctx context.Context, client *atclient.APIClient, w io.Writer) ([]any, error) {
 	var contributors []any
 	for i := 1; ; i++ {
-		fmt.Fprintf(w, "\n  \033[1mContributor %d\033[0m\n", i)
-
 		contributor, err := selectContributor(ctx, client, w)
 		if err != nil {
 			if err == menu.ErrCancelled {
@@ -274,29 +211,38 @@ func promptContributors(ctx context.Context, client *atclient.APIClient, w io.Wr
 			},
 		}
 
-		role, err := prompt.ReadOptionalField(w, os.Stdin, "  Role", "optional")
-		if err != nil {
+		var role, weight string
+		var addAnother bool
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().Title("Role").Description("optional").Value(&role),
+				huh.NewInput().Title("Weight").Description("optional, numeric").Value(&weight),
+				huh.NewConfirm().Title("Add another contributor?").Inline(true).Value(&addAnother),
+			).Title(fmt.Sprintf("Contributor %d", i)),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				break
+			}
 			return nil, err
 		}
+
 		if role != "" {
 			contribObj["contributionDetails"] = map[string]any{
 				"$type": atproto.CollectionActivity + "#contributorRole",
 				"role":  role,
 			}
 		}
-
-		weight, err := prompt.ReadOptionalField(w, os.Stdin, "  Weight", "optional, numeric")
-		if err != nil {
-			return nil, err
-		}
 		if weight != "" {
 			contribObj["contributionWeight"] = weight
 		}
 
 		contributors = append(contributors, contribObj)
-		fmt.Fprintf(w, "  \033[32m\u2713\033[0m Added contributor\n")
+		fmt.Fprintf(w, "\n")
 
-		if !menu.Confirm(w, os.Stdin, "\nAdd another contributor?") {
+		if !addAnother {
 			break
 		}
 	}
@@ -369,107 +315,146 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 
 	// Interactive edit if no flags
 	if !changed {
-		newTitle, err := prompt.ReadLineWithDefault(w, os.Stdin, "Title", "", mapStr(existing, "title"))
-		if err != nil {
+		currentTitle := mapStr(existing, "title")
+		currentDesc := mapStr(existing, "shortDescription")
+		currentStart := mapStr(existing, "startDate")
+		currentEnd := mapStr(existing, "endDate")
+
+		newTitle := currentTitle
+		newDesc := currentDesc
+		newStart := currentStart
+		newEnd := currentEnd
+
+		existingImage := mapMap(existing, "image")
+		currentImageURI := ""
+		if existingImage != nil {
+			currentImageURI = mapStr(existingImage, "uri")
+		}
+		newImageURI := currentImageURI
+
+		var editLocations, editRights bool
+
+		existingLocs := mapSlice(existing, "locations")
+		locTitle := "Link locations?"
+		if len(existingLocs) > 0 {
+			locTitle = fmt.Sprintf("Replace %d location(s)?", len(existingLocs))
+		}
+		existingRights := mapMap(existing, "rights")
+		rightsTitle := "Link rights?"
+		if existingRights != nil {
+			rightsTitle = "Replace rights?"
+		}
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Title").
+					Description("Main title for this hypercert").
+					CharLimit(256).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("title is required")
+						}
+						return nil
+					}).
+					Value(&newTitle),
+
+				huh.NewInput().
+					Title("Short description").
+					Description("Brief summary of the activity").
+					CharLimit(300).
+					Validate(func(s string) error {
+						if strings.TrimSpace(s) == "" {
+							return errors.New("short description is required")
+						}
+						return nil
+					}).
+					Value(&newDesc),
+			).Title("Activity Details"),
+
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Start date").
+					Description("YYYY-MM-DD").
+					Value(&newStart),
+
+				huh.NewInput().
+					Title("End date").
+					Description("YYYY-MM-DD").
+					Value(&newEnd),
+
+				huh.NewInput().
+					Title("Image URI").
+					Description("URL to hypercert image").
+					Value(&newImageURI),
+			).Title("Dates & Media"),
+
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(locTitle).
+					Description("Geographic coordinates for this activity").
+					Value(&editLocations),
+
+				huh.NewConfirm().
+					Title(rightsTitle).
+					Description("License or rights for this claim").
+					Value(&editRights),
+			).Title("Linked Records"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
-		if newTitle != mapStr(existing, "title") {
+
+		if newTitle != currentTitle {
 			existing["title"] = newTitle
 			changed = true
 		}
-
-		newDesc, err := prompt.ReadLineWithDefault(w, os.Stdin, "Short description", "", mapStr(existing, "shortDescription"))
-		if err != nil {
-			return err
-		}
-		if newDesc != mapStr(existing, "shortDescription") {
+		if newDesc != currentDesc {
 			existing["shortDescription"] = newDesc
 			changed = true
 		}
+		if newStart != "" && newStart != currentStart {
+			existing["startDate"] = normalizeDate(newStart)
+			changed = true
+		}
+		if newEnd != "" && newEnd != currentEnd {
+			existing["endDate"] = normalizeDate(newEnd)
+			changed = true
+		}
+		if newImageURI != "" && newImageURI != currentImageURI {
+			existing["image"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   newImageURI,
+			}
+			changed = true
+		}
 
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Edit optional fields?") {
-			// Dates
-			newStart, err := prompt.ReadLineWithDefault(w, os.Stdin, "Start date", "YYYY-MM-DD", mapStr(existing, "startDate"))
+		if editLocations {
+			locations, err := selectLocations(ctx, client, w)
 			if err != nil {
 				return err
 			}
-			if newStart != "" && newStart != mapStr(existing, "startDate") {
-				existing["startDate"] = normalizeDate(newStart)
+			if len(locations) > 0 {
+				var refs []any
+				for _, loc := range locations {
+					refs = append(refs, buildStrongRef(loc.URI, loc.CID))
+				}
+				existing["locations"] = refs
 				changed = true
 			}
+		}
 
-			newEnd, err := prompt.ReadLineWithDefault(w, os.Stdin, "End date", "YYYY-MM-DD", mapStr(existing, "endDate"))
+		if editRights {
+			rights, err := selectRights(ctx, client, w)
 			if err != nil {
 				return err
 			}
-			if newEnd != "" && newEnd != mapStr(existing, "endDate") {
-				existing["endDate"] = normalizeDate(newEnd)
-				changed = true
-			}
-
-			// Locations
-			existingLocs := mapSlice(existing, "locations")
-			locLabel := "Add locations?"
-			if len(existingLocs) > 0 {
-				locLabel = fmt.Sprintf("Replace %d location(s)?", len(existingLocs))
-			}
-			fmt.Fprintln(w)
-			if menu.Confirm(w, os.Stdin, locLabel) {
-				locations, err := selectLocations(ctx, client, w)
-				if err != nil {
-					return err
-				}
-				if len(locations) > 0 {
-					var refs []any
-					for _, loc := range locations {
-						refs = append(refs, buildStrongRef(loc.URI, loc.CID))
-					}
-					existing["locations"] = refs
-					changed = true
-				}
-			}
-
-			// Rights
-			existingRights := mapMap(existing, "rights")
-			rightsLabel := "Add rights?"
-			if existingRights != nil {
-				rightsLabel = "Replace rights?"
-			}
-			fmt.Fprintln(w)
-			if menu.Confirm(w, os.Stdin, rightsLabel) {
-				rights, err := selectRights(ctx, client, w)
-				if err != nil {
-					return err
-				}
-				existing["rights"] = buildStrongRef(rights.URI, rights.CID)
-				changed = true
-			}
-
-			// Image
-			existingImage := mapMap(existing, "image")
-			imageLabel := "Add image URI?"
-			currentImageURI := ""
-			if existingImage != nil {
-				currentImageURI = mapStr(existingImage, "uri")
-				if currentImageURI != "" {
-					imageLabel = "Replace image URI?"
-				}
-			}
-			fmt.Fprintln(w)
-			if menu.Confirm(w, os.Stdin, imageLabel) {
-				newImage, err := prompt.ReadLineWithDefault(w, os.Stdin, "Image URI", "URL to hypercert image", currentImageURI)
-				if err != nil {
-					return err
-				}
-				if newImage != "" && newImage != currentImageURI {
-					existing["image"] = map[string]any{
-						"$type": "org.hypercerts.defs#uri",
-						"uri":   newImage,
-					}
-					changed = true
-				}
-			}
+			existing["rights"] = buildStrongRef(rights.URI, rights.CID)
+			changed = true
 		}
 	}
 

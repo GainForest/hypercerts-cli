@@ -16,7 +16,7 @@ import (
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/menu"
-	"github.com/GainForest/hypercerts-cli/internal/prompt"
+	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
 type measurementOption struct {
@@ -172,19 +172,37 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 	if hasFlags {
 		// Non-interactive: require metric, unit, value via flags or prompt fallback
 		if metric == "" {
-			metric, err = prompt.ReadRequired(w, os.Stdin, "Metric", "e.g. 'trees planted'")
+			err = huh.NewInput().Title("Metric").Description("e.g. 'trees planted'").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("metric is required")
+					}
+					return nil
+				}).Value(&metric).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if unit == "" {
-			unit, err = prompt.ReadRequired(w, os.Stdin, "Unit", "e.g. 'count', 'kg', 'hectares'")
+			err = huh.NewInput().Title("Unit").Description("e.g. 'count', 'kg', 'hectares'").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("unit is required")
+					}
+					return nil
+				}).Value(&unit).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
 		}
 		if value == "" {
-			value, err = prompt.ReadRequired(w, os.Stdin, "Value", "numeric")
+			err = huh.NewInput().Title("Value").Description("numeric").
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return errors.New("value is required")
+					}
+					return nil
+				}).Value(&value).WithTheme(style.Theme()).Run()
 			if err != nil {
 				return err
 			}
@@ -265,10 +283,10 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add locations?").
-					Inline(true).
+					Description("Geographic coordinates for this measurement").
 					Value(&addLocations),
 			).Title("Linked Records"),
-		).WithTheme(huh.ThemeBase16())
+		).WithTheme(style.Theme())
 
 		err := form.Run()
 		if err != nil {
@@ -383,73 +401,78 @@ func runMeasurementEdit(ctx context.Context, cmd *cli.Command) error {
 	isInteractive := newMetric == "" && newUnit == "" && newValue == "" && newStartDate == "" && newEndDate == ""
 
 	if isInteractive {
-		// Interactive mode
-		newMetric, err = prompt.ReadLineWithDefault(w, os.Stdin, "Metric", "required", currentMetric)
-		if err != nil {
-			return err
-		}
-		newUnit, err = prompt.ReadLineWithDefault(w, os.Stdin, "Unit", "required", currentUnit)
-		if err != nil {
-			return err
-		}
-		newValue, err = prompt.ReadLineWithDefault(w, os.Stdin, "Value", "required", currentValue)
-		if err != nil {
+		newMetric = currentMetric
+		newUnit = currentUnit
+		newValue = currentValue
+		var editOptional bool
+
+		form := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().Title("Metric").Description("Required").Value(&newMetric),
+				huh.NewInput().Title("Unit").Description("Required").Value(&newUnit),
+				huh.NewInput().Title("Value").Description("Required").Value(&newValue),
+				huh.NewConfirm().Title("Edit optional fields?").Inline(true).Value(&editOptional),
+			).Title("Edit Measurement"),
+		).WithTheme(style.Theme())
+
+		if err := form.Run(); err != nil {
+			if err == huh.ErrUserAborted {
+				return nil
+			}
 			return err
 		}
 
-		fmt.Fprintln(w)
-		if menu.Confirm(w, os.Stdin, "Edit optional fields?") {
-			// Dates
-			newStartDate, err = prompt.ReadLineWithDefault(w, os.Stdin, "Start date", "YYYY-MM-DD", currentStartDate)
-			if err != nil {
-				return err
-			}
-			newEndDate, err = prompt.ReadLineWithDefault(w, os.Stdin, "End date", "YYYY-MM-DD", currentEndDate)
-			if err != nil {
-				return err
-			}
-
-			// Method type
+		if editOptional {
+			newStartDate = currentStartDate
+			newEndDate = currentEndDate
 			currentMethodType := mapStr(existing, "methodType")
-			newMethodType, err := prompt.ReadLineWithDefault(w, os.Stdin, "Method type", "short methodology ID", currentMethodType)
-			if err != nil {
+			currentMethodURI := mapStr(existing, "methodURI")
+			currentComment := mapStr(existing, "comment")
+			newMethodType := currentMethodType
+			newMethodURI := currentMethodURI
+			newComment := currentComment
+			var editLocations bool
+
+			existingLocs := mapSlice(existing, "locations")
+			locLabel := "Add locations?"
+			if len(existingLocs) > 0 {
+				locLabel = fmt.Sprintf("Replace %d location(s)?", len(existingLocs))
+			}
+
+			optForm := huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().Title("Start date").Description("YYYY-MM-DD").Value(&newStartDate),
+					huh.NewInput().Title("End date").Description("YYYY-MM-DD").Value(&newEndDate),
+					huh.NewInput().Title("Method type").Description("Short methodology ID").CharLimit(30).Value(&newMethodType),
+					huh.NewInput().Title("Method URI").Description("URL to methodology docs").Value(&newMethodURI),
+					huh.NewInput().Title("Comment").Description("Max 300 chars").CharLimit(300).Value(&newComment),
+				).Title("Optional Fields"),
+				huh.NewGroup(
+					huh.NewConfirm().Title(locLabel).Description("Geographic coordinates for this measurement").Value(&editLocations),
+				).Title("Linked Records"),
+			).WithTheme(style.Theme())
+
+			if err := optForm.Run(); err != nil {
+				if err == huh.ErrUserAborted {
+					return nil
+				}
 				return err
 			}
+
 			if newMethodType != "" && newMethodType != currentMethodType {
 				existing["methodType"] = newMethodType
 				changed = true
 			}
-
-			// Method URI
-			currentMethodURI := mapStr(existing, "methodURI")
-			newMethodURI, err := prompt.ReadLineWithDefault(w, os.Stdin, "Method URI", "URL to methodology docs", currentMethodURI)
-			if err != nil {
-				return err
-			}
 			if newMethodURI != "" && newMethodURI != currentMethodURI {
 				existing["methodURI"] = newMethodURI
 				changed = true
-			}
-
-			// Comment
-			currentComment := mapStr(existing, "comment")
-			newComment, err := prompt.ReadLineWithDefault(w, os.Stdin, "Comment", "max 300 chars", currentComment)
-			if err != nil {
-				return err
 			}
 			if newComment != "" && newComment != currentComment {
 				existing["comment"] = newComment
 				changed = true
 			}
 
-			// Locations
-			existingLocs := mapSlice(existing, "locations")
-			locLabel := "Add locations?"
-			if len(existingLocs) > 0 {
-				locLabel = fmt.Sprintf("Replace %d location(s)?", len(existingLocs))
-			}
-			fmt.Fprintln(w)
-			if menu.Confirm(w, os.Stdin, locLabel) {
+			if editLocations {
 				locations, err := selectLocations(ctx, client, w)
 				if err != nil {
 					return err
