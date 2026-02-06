@@ -758,6 +758,7 @@ func runActivityGet(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	w := cmd.Root().Writer
 	did := client.AccountDID.String()
 	uri := resolveRecordURI(did, atproto.CollectionActivity, arg)
 
@@ -771,95 +772,208 @@ func runActivityGet(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("failed to get activity: %w", err)
 	}
 
-	result := map[string]any{
-		"uri":      uri,
-		"activity": activity,
+	showMeasurements := cmd.Bool("measurements")
+	showAttachments := cmd.Bool("attachments")
+	showEvaluations := cmd.Bool("evaluations")
+	showAll := cmd.Bool("all")
+	useJSON := cmd.Bool("json")
+
+	if showAll {
+		showMeasurements = true
+		showAttachments = true
+		showEvaluations = true
 	}
 
-	// Find linked measurements
-	measurementURIs := findLinkedURIs(ctx, client, did, atproto.CollectionMeasurement, "subject", uri)
-	if len(measurementURIs) > 0 {
-		var measurements []map[string]any
-		for _, mURI := range measurementURIs {
-			mATURI, err := syntax.ParseATURI(mURI)
-			if err != nil {
-				continue
-			}
-			m, _, err := atproto.GetRecord(ctx, client, did, mATURI.Collection().String(), mATURI.RecordKey().String())
-			if err != nil {
-				continue
-			}
-			m["_uri"] = mURI
-			measurements = append(measurements, m)
+	// If no backlink flags, show activity JSON and summary
+	showBacklinks := showMeasurements || showAttachments || showEvaluations
+
+	if !showBacklinks {
+		// Default: show activity record as JSON
+		result := map[string]any{
+			"uri":      uri,
+			"activity": activity,
 		}
-		if len(measurements) > 0 {
-			result["measurements"] = measurements
+
+		// Fetch backlinks summary to show counts
+		summary, err := atproto.GetAllBacklinks(ctx, uri)
+		if err == nil && summary != nil {
+			counts := map[string]int{}
+			for collection, paths := range summary.Links {
+				for _, c := range paths {
+					counts[collection] += c.Records
+				}
+			}
+			if len(counts) > 0 {
+				result["backlinks"] = counts
+			}
 		}
+
+		fmt.Fprintln(w, prettyJSON(result))
+		return nil
 	}
 
-	// Find linked attachments
-	attachmentURIs := findLinkedURIs(ctx, client, did, atproto.CollectionAttachment, "subjects", uri)
-	if len(attachmentURIs) > 0 {
-		var attachments []map[string]any
-		for _, aURI := range attachmentURIs {
-			aATURI, err := syntax.ParseATURI(aURI)
-			if err != nil {
-				continue
-			}
-			a, _, err := atproto.GetRecord(ctx, client, did, aATURI.Collection().String(), aATURI.RecordKey().String())
-			if err != nil {
-				continue
-			}
-			a["_uri"] = aURI
-			attachments = append(attachments, a)
-		}
-		if len(attachments) > 0 {
-			result["attachments"] = attachments
-		}
+	// Show activity header
+	title := mapStr(activity, "title")
+	desc := mapStr(activity, "shortDescription")
+	fmt.Fprintf(w, "\033[1m%s\033[0m\n", title)
+	if desc != "" {
+		fmt.Fprintf(w, "\033[90m%s\033[0m\n", desc)
 	}
+	fmt.Fprintf(w, "URI: %s\n", uri)
+	fmt.Fprintln(w)
 
-	// Find linked evaluations
-	evaluationURIs := findLinkedURIs(ctx, client, did, atproto.CollectionEvaluation, "subject", uri)
-	if len(evaluationURIs) > 0 {
-		var evaluations []map[string]any
-		for _, eURI := range evaluationURIs {
-			eATURI, err := syntax.ParseATURI(eURI)
-			if err != nil {
-				continue
+	// Fetch backlinked records via Constellation
+	if showMeasurements {
+		records, err := atproto.GetAllBacklinkRecords(ctx, uri, atproto.CollectionMeasurement, ".subject.uri")
+		if err != nil {
+			fmt.Fprintf(w, "\033[33mWarning: failed to fetch measurement backlinks: %v\033[0m\n", err)
+		} else {
+			fmt.Fprintf(w, "\033[1mMeasurements (%d)\033[0m\n", len(records))
+			if len(records) == 0 {
+				fmt.Fprintln(w, "\033[90m  (none)\033[0m")
+			} else if useJSON {
+				printBacklinkRecordsJSON(ctx, client, w, records)
+			} else {
+				fmt.Fprintf(w, "  %-15s %-12s %-20s %-10s %-10s %s\n", "ID", "DID", "METRIC", "VALUE", "UNIT", "CREATED")
+				fmt.Fprintf(w, "  %-15s %-12s %-20s %-10s %-10s %s\n",
+					strings.Repeat("-", 13), strings.Repeat("-", 10),
+					strings.Repeat("-", 18), strings.Repeat("-", 8),
+					strings.Repeat("-", 8), strings.Repeat("-", 10))
+				for _, lr := range records {
+					rec, _, err := atproto.GetRecord(ctx, client, lr.DID, lr.Collection, lr.Rkey)
+					if err != nil {
+						fmt.Fprintf(w, "  %-15s %-12s \033[90m(failed to fetch)\033[0m\n", lr.Rkey, truncate(lr.DID, 10))
+						continue
+					}
+					metric := truncate(mapStr(rec, "metric"), 18)
+					value := truncate(mapStr(rec, "value"), 8)
+					unit := truncate(mapStr(rec, "unit"), 8)
+					created := formatDate(mapStr(rec, "createdAt"))
+					didShort := truncate(lr.DID, 10)
+					fmt.Fprintf(w, "  %-15s %-12s %-20s %-10s %-10s %s\n", lr.Rkey, didShort, metric, value, unit, created)
+				}
 			}
-			e, _, err := atproto.GetRecord(ctx, client, did, eATURI.Collection().String(), eATURI.RecordKey().String())
-			if err != nil {
-				continue
-			}
-			e["_uri"] = eURI
-			evaluations = append(evaluations, e)
-		}
-		if len(evaluations) > 0 {
-			result["evaluations"] = evaluations
-		}
-	}
-
-	// Find collections containing this activity
-	collectionURIs := findCollectionsContaining(ctx, client, did, uri)
-	if len(collectionURIs) > 0 {
-		var collections []map[string]any
-		for _, cURI := range collectionURIs {
-			cATURI, err := syntax.ParseATURI(cURI)
-			if err != nil {
-				continue
-			}
-			c, _, err := atproto.GetRecord(ctx, client, did, cATURI.Collection().String(), cATURI.RecordKey().String())
-			if err != nil {
-				continue
-			}
-			c["_uri"] = cURI
-			collections = append(collections, c)
-		}
-		if len(collections) > 0 {
-			result["collections"] = collections
+			fmt.Fprintln(w)
 		}
 	}
 
-	fmt.Fprintln(cmd.Root().Writer, prettyJSON(result))
+	if showAttachments {
+		// Attachments can link via .subjects[].uri or .subject.uri
+		records, err := atproto.GetAllBacklinkRecords(ctx, uri, atproto.CollectionAttachment, ".subjects[].uri")
+		if err != nil {
+			// Try alternate path
+			records, err = atproto.GetAllBacklinkRecords(ctx, uri, atproto.CollectionAttachment, ".subject.uri")
+		}
+		if err != nil {
+			fmt.Fprintf(w, "\033[33mWarning: failed to fetch attachment backlinks: %v\033[0m\n", err)
+		} else {
+			fmt.Fprintf(w, "\033[1mAttachments (%d)\033[0m\n", len(records))
+			if len(records) == 0 {
+				fmt.Fprintln(w, "\033[90m  (none)\033[0m")
+			} else if useJSON {
+				printBacklinkRecordsJSON(ctx, client, w, records)
+			} else {
+				fmt.Fprintf(w, "  %-15s %-12s %-25s %-12s %s\n", "ID", "DID", "TITLE", "TYPE", "CREATED")
+				fmt.Fprintf(w, "  %-15s %-12s %-25s %-12s %s\n",
+					strings.Repeat("-", 13), strings.Repeat("-", 10),
+					strings.Repeat("-", 23), strings.Repeat("-", 10),
+					strings.Repeat("-", 10))
+				for _, lr := range records {
+					rec, _, err := atproto.GetRecord(ctx, client, lr.DID, lr.Collection, lr.Rkey)
+					if err != nil {
+						fmt.Fprintf(w, "  %-15s %-12s \033[90m(failed to fetch)\033[0m\n", lr.Rkey, truncate(lr.DID, 10))
+						continue
+					}
+					title := truncate(mapStr(rec, "title"), 23)
+					contentType := truncate(mapStr(rec, "contentType"), 10)
+					if contentType == "" {
+						contentType = "-"
+					}
+					created := formatDate(mapStr(rec, "createdAt"))
+					didShort := truncate(lr.DID, 10)
+					fmt.Fprintf(w, "  %-15s %-12s %-25s %-12s %s\n", lr.Rkey, didShort, title, contentType, created)
+				}
+			}
+			fmt.Fprintln(w)
+		}
+	}
+
+	if showEvaluations {
+		records, err := atproto.GetAllBacklinkRecords(ctx, uri, atproto.CollectionEvaluation, ".subject.uri")
+		if err != nil {
+			fmt.Fprintf(w, "\033[33mWarning: failed to fetch evaluation backlinks: %v\033[0m\n", err)
+		} else {
+			fmt.Fprintf(w, "\033[1mEvaluations (%d)\033[0m\n", len(records))
+			if len(records) == 0 {
+				fmt.Fprintln(w, "\033[90m  (none)\033[0m")
+			} else if useJSON {
+				printBacklinkRecordsJSON(ctx, client, w, records)
+			} else {
+				fmt.Fprintf(w, "  %-15s %-12s %-35s %-10s %s\n", "ID", "DID", "SUMMARY", "SCORE", "CREATED")
+				fmt.Fprintf(w, "  %-15s %-12s %-35s %-10s %s\n",
+					strings.Repeat("-", 13), strings.Repeat("-", 10),
+					strings.Repeat("-", 33), strings.Repeat("-", 8),
+					strings.Repeat("-", 10))
+				for _, lr := range records {
+					rec, _, err := atproto.GetRecord(ctx, client, lr.DID, lr.Collection, lr.Rkey)
+					if err != nil {
+						fmt.Fprintf(w, "  %-15s %-12s \033[90m(failed to fetch)\033[0m\n", lr.Rkey, truncate(lr.DID, 10))
+						continue
+					}
+					summary := truncate(mapStr(rec, "summary"), 33)
+					scoreStr := "-"
+					if score := mapMap(rec, "score"); score != nil {
+						if v, ok := score["value"].(float64); ok {
+							if m, ok := score["max"].(float64); ok {
+								scoreStr = fmt.Sprintf("%d/%d", int(v), int(m))
+							}
+						}
+					}
+					created := formatDate(mapStr(rec, "createdAt"))
+					didShort := truncate(lr.DID, 10)
+					fmt.Fprintf(w, "  %-15s %-12s %-35s %-10s %s\n", lr.Rkey, didShort, summary, scoreStr, created)
+				}
+			}
+			fmt.Fprintln(w)
+		}
+	}
+
 	return nil
+}
+
+// printBacklinkRecordsJSON fetches and prints full records as JSON.
+func printBacklinkRecordsJSON(ctx context.Context, client *atclient.APIClient, w io.Writer, records []atproto.LinkingRecord) {
+	var results []map[string]any
+	for _, lr := range records {
+		rec, _, err := atproto.GetRecord(ctx, client, lr.DID, lr.Collection, lr.Rkey)
+		if err != nil {
+			continue
+		}
+		rec["_uri"] = fmt.Sprintf("at://%s/%s/%s", lr.DID, lr.Collection, lr.Rkey)
+		rec["_did"] = lr.DID
+		results = append(results, rec)
+	}
+	fmt.Fprintln(w, prettyJSON(results))
+}
+
+// truncate shortens a string to max length with "..." suffix.
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
+}
+
+// formatDate converts RFC3339 to YYYY-MM-DD, or returns "-".
+func formatDate(s string) string {
+	if s == "" {
+		return "-"
+	}
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.Format("2006-01-02")
+	}
+	return s
 }

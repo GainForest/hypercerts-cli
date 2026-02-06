@@ -203,9 +203,16 @@ var cmdActivity = &cli.Command{
 		},
 		{
 			Name:      "get",
-			Usage:     "get activity details",
+			Usage:     "get activity details (with backlinked records via Constellation)",
 			ArgsUsage: "<id|at-uri>",
-			Action:    runActivityGet,
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "measurements", Aliases: []string{"m"}, Usage: "show backlinked measurements"},
+				&cli.BoolFlag{Name: "attachments", Aliases: []string{"a"}, Usage: "show backlinked attachments"},
+				&cli.BoolFlag{Name: "evaluations", Aliases: []string{"e"}, Usage: "show backlinked evaluations"},
+				&cli.BoolFlag{Name: "all", Usage: "show all backlinked records"},
+				&cli.BoolFlag{Name: "json", Usage: "output backlinked records as JSON"},
+			},
+			Action: runActivityGet,
 		},
 	},
 }
