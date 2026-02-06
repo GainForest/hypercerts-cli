@@ -102,12 +102,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 	from := cmd.String("from")
 	if from == "" {
 		defaultFrom := client.AccountDID.String()
-		from, err = prompt.ReadLineWithDefault(w, os.Stdin, "From (sender DID)", "required", defaultFrom)
+		from, err = prompt.ReadRequiredWithDefault(w, os.Stdin, "From (sender DID)", "", defaultFrom)
 		if err != nil {
 			return err
-		}
-		if from == "" {
-			return fmt.Errorf("from is required")
 		}
 	}
 	record["from"] = from
@@ -115,12 +112,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 	// To (required - recipient)
 	to := cmd.String("to")
 	if to == "" {
-		to, err = prompt.ReadLineWithDefault(w, os.Stdin, "To (recipient)", "required, DID or name", "")
+		to, err = prompt.ReadRequired(w, os.Stdin, "To (recipient)", "DID or name")
 		if err != nil {
 			return err
-		}
-		if to == "" {
-			return fmt.Errorf("to is required")
 		}
 	}
 	record["to"] = to
@@ -128,12 +122,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 	// Amount (required)
 	amount := cmd.String("amount")
 	if amount == "" {
-		amount, err = prompt.ReadLineWithDefault(w, os.Stdin, "Amount", "required, e.g. 1000.00", "")
+		amount, err = prompt.ReadRequired(w, os.Stdin, "Amount", "e.g. 1000.00")
 		if err != nil {
 			return err
-		}
-		if amount == "" {
-			return fmt.Errorf("amount is required")
 		}
 	}
 	record["amount"] = amount
@@ -141,12 +132,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 	// Currency (required)
 	currency := cmd.String("currency")
 	if currency == "" {
-		currency, err = prompt.ReadLineWithDefault(w, os.Stdin, "Currency", "required, e.g. USD, EUR, ETH", "")
+		currency, err = prompt.ReadRequired(w, os.Stdin, "Currency", "e.g. USD, EUR, ETH")
 		if err != nil {
 			return err
-		}
-		if currency == "" {
-			return fmt.Errorf("currency is required")
 		}
 	}
 	record["currency"] = currency

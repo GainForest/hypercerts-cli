@@ -150,12 +150,9 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 	// Key (required - lowercase-hyphenated)
 	key := cmd.String("key")
 	if key == "" {
-		key, err = prompt.ReadLineWithDefault(w, os.Stdin, "Key", "required, lowercase-hyphenated (e.g. climate-action)", "")
+		key, err = prompt.ReadRequired(w, os.Stdin, "Key", "lowercase-hyphenated, e.g. climate-action")
 		if err != nil {
 			return err
-		}
-		if key == "" {
-			return fmt.Errorf("key is required")
 		}
 	}
 	if !keyPattern.MatchString(key) {
@@ -166,12 +163,9 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 	// Label (required)
 	label := cmd.String("label")
 	if label == "" {
-		label, err = prompt.ReadLineWithDefault(w, os.Stdin, "Label", "required, human-readable name", "")
+		label, err = prompt.ReadRequired(w, os.Stdin, "Label", "human-readable name")
 		if err != nil {
 			return err
-		}
-		if label == "" {
-			return fmt.Errorf("label is required")
 		}
 	}
 	record["label"] = label

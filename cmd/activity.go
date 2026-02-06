@@ -89,12 +89,9 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 	// Required: title
 	title := cmd.String("title")
 	if title == "" {
-		title, err = prompt.ReadLineWithDefault(w, os.Stdin, "Title", "required, max 256 chars", "")
+		title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
 		if err != nil {
 			return err
-		}
-		if title == "" {
-			return fmt.Errorf("title is required")
 		}
 	}
 	record["title"] = title
@@ -102,12 +99,9 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 	// Required: shortDescription
 	shortDesc := cmd.String("description")
 	if shortDesc == "" {
-		shortDesc, err = prompt.ReadLineWithDefault(w, os.Stdin, "Short description", "required, max 300 chars", "")
+		shortDesc, err = prompt.ReadRequired(w, os.Stdin, "Short description", "max 300 chars")
 		if err != nil {
 			return err
-		}
-		if shortDesc == "" {
-			return fmt.Errorf("short description is required")
 		}
 	}
 	record["shortDescription"] = shortDesc

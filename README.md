@@ -1,4 +1,4 @@
-# Hyper - Hypercerts CLI
+# Hypercerts CLI
 
 A command-line tool for managing [Hypercerts](https://hypercerts.org) on the [AT Protocol](https://atproto.com). Create, edit, and manage impact claims, measurements, locations, attachments, and contributors with interactive menus or scriptable flags.
 

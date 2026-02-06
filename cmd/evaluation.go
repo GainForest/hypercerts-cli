@@ -98,14 +98,17 @@ func fetchEvaluations(ctx context.Context, client *atclient.APIClient, did strin
 func promptEvaluators(w io.Writer) ([]string, error) {
 	var evaluators []string
 	for {
-		did, err := prompt.ReadLineWithDefault(w, os.Stdin, "Evaluator DID", "required, e.g. did:plc:abc123", "")
+		var did string
+		var err error
+		if len(evaluators) == 0 {
+			did, err = prompt.ReadRequired(w, os.Stdin, "Evaluator DID", "e.g. did:plc:abc123")
+		} else {
+			did, err = prompt.ReadOptionalField(w, os.Stdin, "Evaluator DID", "enter to finish")
+		}
 		if err != nil {
 			return nil, err
 		}
 		if did == "" {
-			if len(evaluators) == 0 {
-				return nil, fmt.Errorf("at least one evaluator is required")
-			}
 			break
 		}
 		evaluators = append(evaluators, did)
@@ -263,12 +266,9 @@ func runEvaluationCreate(ctx context.Context, cmd *cli.Command) error {
 	summary := cmd.String("summary")
 	if summary == "" {
 		fmt.Fprintln(w)
-		summary, err = prompt.ReadLineWithDefault(w, os.Stdin, "Summary", "required, brief evaluation summary", "")
+		summary, err = prompt.ReadRequired(w, os.Stdin, "Summary", "brief evaluation summary")
 		if err != nil {
 			return err
-		}
-		if summary == "" {
-			return fmt.Errorf("summary is required")
 		}
 	}
 	record["summary"] = summary

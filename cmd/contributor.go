@@ -109,12 +109,9 @@ func runContributorCreate(ctx context.Context, cmd *cli.Command) error {
 	displayName := cmd.String("name")
 
 	if identifier == "" {
-		identifier, err = prompt.ReadLineWithDefault(w, os.Stdin, "Identifier", "DID or profile URI", "")
+		identifier, err = prompt.ReadRequired(w, os.Stdin, "Identifier", "DID or profile URI")
 		if err != nil {
 			return err
-		}
-		if identifier == "" {
-			return fmt.Errorf("identifier is required")
 		}
 	}
 	if displayName == "" {
@@ -342,12 +339,9 @@ func createContributorInline(ctx context.Context, client *atclient.APIClient, w 
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  \033[1mNew Contributor\033[0m")
 
-	identifier, err := prompt.ReadLineWithDefault(w, os.Stdin, "  Identifier", "DID or profile URI", "")
+	identifier, err := prompt.ReadRequired(w, os.Stdin, "  Identifier", "DID or profile URI")
 	if err != nil {
 		return nil, err
-	}
-	if identifier == "" {
-		return nil, fmt.Errorf("identifier is required")
 	}
 
 	displayName, err := prompt.ReadOptionalField(w, os.Stdin, "  Display name", "max 100 chars, optional")

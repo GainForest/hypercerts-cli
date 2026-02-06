@@ -136,12 +136,9 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 	// Title (required)
 	title := cmd.String("title")
 	if title == "" {
-		title, err = prompt.ReadLineWithDefault(w, os.Stdin, "Title", "required, max 80 graphemes", "")
+		title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 80 graphemes")
 		if err != nil {
 			return err
-		}
-		if title == "" {
-			return fmt.Errorf("title is required")
 		}
 	}
 	record["title"] = title

@@ -160,12 +160,9 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 	// Metric - required
 	metric := cmd.String("metric")
 	if metric == "" {
-		metric, err = prompt.ReadLineWithDefault(w, os.Stdin, "Metric", "required, e.g. 'trees planted'", "")
+		metric, err = prompt.ReadRequired(w, os.Stdin, "Metric", "e.g. 'trees planted'")
 		if err != nil {
 			return err
-		}
-		if metric == "" {
-			return fmt.Errorf("metric is required")
 		}
 	}
 	record["metric"] = metric
@@ -173,12 +170,9 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 	// Unit - required
 	unit := cmd.String("unit")
 	if unit == "" {
-		unit, err = prompt.ReadLineWithDefault(w, os.Stdin, "Unit", "required, e.g. 'count', 'kg', 'hectares'", "")
+		unit, err = prompt.ReadRequired(w, os.Stdin, "Unit", "e.g. 'count', 'kg', 'hectares'")
 		if err != nil {
 			return err
-		}
-		if unit == "" {
-			return fmt.Errorf("unit is required")
 		}
 	}
 	record["unit"] = unit
@@ -186,12 +180,9 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 	// Value - required (stored as string for DAG-CBOR)
 	value := cmd.String("value")
 	if value == "" {
-		value, err = prompt.ReadLineWithDefault(w, os.Stdin, "Value", "required, numeric", "")
+		value, err = prompt.ReadRequired(w, os.Stdin, "Value", "numeric")
 		if err != nil {
 			return err
-		}
-		if value == "" {
-			return fmt.Errorf("value is required")
 		}
 	}
 	record["value"] = value

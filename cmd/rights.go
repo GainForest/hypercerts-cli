@@ -105,28 +105,19 @@ func createRightsInline(ctx context.Context, client *atclient.APIClient, w io.Wr
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  \033[1mNew Rights\033[0m")
 
-	name, err := prompt.ReadLineWithDefault(w, os.Stdin, "  Rights name", "required, max 100 chars", "")
+	name, err := prompt.ReadRequired(w, os.Stdin, "  Rights name", "max 100 chars")
 	if err != nil {
 		return nil, err
-	}
-	if name == "" {
-		return nil, fmt.Errorf("rights name is required")
 	}
 
-	rightsType, err := prompt.ReadLineWithDefault(w, os.Stdin, "  Rights type", "required, short ID max 10 chars (e.g. CC-BY-4.0)", "")
+	rightsType, err := prompt.ReadRequired(w, os.Stdin, "  Rights type", "short ID max 10 chars, e.g. CC-BY-4.0")
 	if err != nil {
 		return nil, err
-	}
-	if rightsType == "" {
-		return nil, fmt.Errorf("rights type is required")
 	}
 
-	description, err := prompt.ReadLineWithDefault(w, os.Stdin, "  Description", "required", "")
+	description, err := prompt.ReadRequired(w, os.Stdin, "  Description", "")
 	if err != nil {
 		return nil, err
-	}
-	if description == "" {
-		return nil, fmt.Errorf("rights description is required")
 	}
 
 	record := map[string]any{
@@ -169,12 +160,9 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 	// Rights name - required
 	name := cmd.String("name")
 	if name == "" {
-		name, err = prompt.ReadLineWithDefault(w, os.Stdin, "Rights name", "required, max 100 chars", "")
+		name, err = prompt.ReadRequired(w, os.Stdin, "Rights name", "max 100 chars")
 		if err != nil {
 			return err
-		}
-		if name == "" {
-			return fmt.Errorf("rights name is required")
 		}
 	}
 	record["rightsName"] = name
@@ -182,12 +170,9 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 	// Rights type - required
 	rightsType := cmd.String("type")
 	if rightsType == "" {
-		rightsType, err = prompt.ReadLineWithDefault(w, os.Stdin, "Rights type", "required, short ID max 10 chars (e.g. CC-BY-4.0)", "")
+		rightsType, err = prompt.ReadRequired(w, os.Stdin, "Rights type", "short ID max 10 chars, e.g. CC-BY-4.0")
 		if err != nil {
 			return err
-		}
-		if rightsType == "" {
-			return fmt.Errorf("rights type is required")
 		}
 	}
 	record["rightsType"] = rightsType
@@ -195,12 +180,9 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 	// Rights description - required
 	description := cmd.String("description")
 	if description == "" {
-		description, err = prompt.ReadLineWithDefault(w, os.Stdin, "Description", "required", "")
+		description, err = prompt.ReadRequired(w, os.Stdin, "Description", "")
 		if err != nil {
 			return err
-		}
-		if description == "" {
-			return fmt.Errorf("rights description is required")
 		}
 	}
 	record["rightsDescription"] = description

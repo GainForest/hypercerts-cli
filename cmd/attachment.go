@@ -125,14 +125,17 @@ func selectSubjects(ctx context.Context, client *atclient.APIClient, w io.Writer
 func promptContentURIs(w io.Writer) ([]map[string]any, error) {
 	var content []map[string]any
 	for {
-		uri, err := prompt.ReadLineWithDefault(w, os.Stdin, "Content URI", "URL to evidence/document", "")
+		var uri string
+		var err error
+		if len(content) == 0 {
+			uri, err = prompt.ReadRequired(w, os.Stdin, "Content URI", "URL to evidence/document")
+		} else {
+			uri, err = prompt.ReadOptionalField(w, os.Stdin, "Content URI", "enter to finish")
+		}
 		if err != nil {
 			return nil, err
 		}
 		if uri == "" {
-			if len(content) == 0 {
-				return nil, fmt.Errorf("at least one content URI is required")
-			}
 			break
 		}
 		content = append(content, map[string]any{
@@ -163,12 +166,9 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 	// Title - required
 	title := cmd.String("title")
 	if title == "" {
-		title, err = prompt.ReadLineWithDefault(w, os.Stdin, "Title", "required, max 256 chars", "")
+		title, err = prompt.ReadRequired(w, os.Stdin, "Title", "max 256 chars")
 		if err != nil {
 			return err
-		}
-		if title == "" {
-			return fmt.Errorf("title is required")
 		}
 	}
 	record["title"] = title
