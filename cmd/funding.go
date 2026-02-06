@@ -232,7 +232,7 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Link to an activity?").
-					Description("Select an existing activity to link this funding to").
+					Inline(true).
 					Value(&linkActivity),
 			).Title("Linked Records"),
 		).WithTheme(huh.ThemeBase16())

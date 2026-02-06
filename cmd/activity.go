@@ -169,17 +169,17 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add contributors?").
-					Description("Link contributor records to this activity").
+					Inline(true).
 					Value(&addContributors),
 
 				huh.NewConfirm().
 					Title("Add locations?").
-					Description("Link geographic location records").
+					Inline(true).
 					Value(&addLocations),
 
 				huh.NewConfirm().
 					Title("Add rights?").
-					Description("Link a rights/license record").
+					Inline(true).
 					Value(&addRights),
 			).Title("Linked Records"),
 		).WithTheme(huh.ThemeBase16())

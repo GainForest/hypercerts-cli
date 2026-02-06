@@ -193,12 +193,12 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add parent tag?").
-					Description("Set a parent for hierarchy").
+					Inline(true).
 					Value(&addParent),
 
 				huh.NewConfirm().
 					Title("Add aliases?").
-					Description("Alternative names for this tag").
+					Inline(true).
 					Value(&addAliases),
 			).Title("Hierarchy"),
 		).WithTheme(huh.ThemeBase16())

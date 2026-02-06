@@ -309,22 +309,22 @@ func runEvaluationCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Link to an activity?").
-					Description("Select what to evaluate").
+					Inline(true).
 					Value(&addSubject),
 
 				huh.NewConfirm().
 					Title("Add content URIs?").
-					Description("Reports, methodology docs").
+					Inline(true).
 					Value(&addContentURIs),
 
 				huh.NewConfirm().
 					Title("Link measurements?").
-					Description("Select measurement records to reference").
+					Inline(true).
 					Value(&addMeasurements),
 
 				huh.NewConfirm().
 					Title("Add location?").
-					Description("Link a geographic location record").
+					Inline(true).
 					Value(&addLocation),
 			).Title("Linked Records"),
 		).WithTheme(huh.ThemeBase16())

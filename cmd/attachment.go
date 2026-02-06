@@ -285,7 +285,7 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add location?").
-					Description("Link a geographic location record").
+					Inline(true).
 					Value(&addLocation),
 			).Title("Linked Records"),
 		).WithTheme(huh.ThemeBase16())

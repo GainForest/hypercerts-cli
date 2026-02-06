@@ -265,7 +265,7 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewConfirm().
 					Title("Add locations?").
-					Description("Link geographic location records").
+					Inline(true).
 					Value(&addLocations),
 			).Title("Linked Records"),
 		).WithTheme(huh.ThemeBase16())
