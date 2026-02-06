@@ -1,0 +1,561 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/bluesky-social/indigo/atproto/atclient"
+	"github.com/bluesky-social/indigo/atproto/syntax"
+	"github.com/urfave/cli/v3"
+
+	"github.com/GainForest/hypercerts-cli/internal/atproto"
+	"github.com/GainForest/hypercerts-cli/internal/menu"
+	"github.com/GainForest/hypercerts-cli/internal/prompt"
+)
+
+var workScopeKinds = []string{"topic", "language", "domain", "method", "tag"}
+
+// keyPattern validates lowercase-hyphenated keys
+var keyPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+type workScopeOption struct {
+	URI        string
+	CID        string
+	Rkey       string
+	Key        string
+	Label      string
+	Kind       string
+	ParentRkey string
+	Created    string
+}
+
+func fetchWorkScopes(ctx context.Context, client *atclient.APIClient, did string) ([]workScopeOption, error) {
+	entries, err := atproto.ListAllRecords(ctx, client, did, atproto.CollectionWorkScopeTag)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list work scope tags: %w", err)
+	}
+	var result []workScopeOption
+	for _, e := range entries {
+		aturi, err := syntax.ParseATURI(e.URI)
+		if err != nil {
+			continue
+		}
+
+		parentRkey := ""
+		if parent := mapMap(e.Value, "parent"); parent != nil {
+			parentRkey = extractRkey(mapStr(parent, "uri"))
+		}
+
+		created := ""
+		if createdAt := mapStr(e.Value, "createdAt"); createdAt != "" {
+			if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+				created = t.Format("2006-01-02")
+			}
+		}
+
+		key := mapStr(e.Value, "key")
+		if len(key) > 25 {
+			key = key[:22] + "..."
+		}
+
+		label := mapStr(e.Value, "label")
+		if len(label) > 30 {
+			label = label[:27] + "..."
+		}
+
+		result = append(result, workScopeOption{
+			URI:        e.URI,
+			CID:        e.CID,
+			Rkey:       string(aturi.RecordKey()),
+			Key:        key,
+			Label:      label,
+			Kind:       mapStr(e.Value, "kind"),
+			ParentRkey: parentRkey,
+			Created:    created,
+		})
+	}
+	return result, nil
+}
+
+// selectWorkScope allows selecting an existing work scope tag.
+func selectWorkScope(ctx context.Context, client *atclient.APIClient, w io.Writer) (*workScopeOption, error) {
+	did := client.AccountDID.String()
+	scopes, err := fetchWorkScopes(ctx, client, did)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(scopes) == 0 {
+		return nil, fmt.Errorf("no work scope tags found - create one first")
+	}
+
+	selected, err := menu.SingleSelect(w, scopes, "work scope",
+		func(s workScopeOption) string { return s.Label },
+		func(s workScopeOption) string {
+			if s.Kind != "" {
+				return s.Kind
+			}
+			return s.Key
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return selected, nil
+}
+
+// promptKind prompts for work scope kind selection.
+func promptKind(w io.Writer) (string, error) {
+	type kindOption struct {
+		Value string
+		Label string
+	}
+	options := []kindOption{
+		{"", "(skip)"},
+		{"topic", "topic - subject area"},
+		{"language", "language - programming/natural"},
+		{"domain", "domain - field of study"},
+		{"method", "method - approach/technique"},
+		{"tag", "tag - general label"},
+	}
+
+	selected, err := menu.SingleSelect(w, options, "kind",
+		func(k kindOption) string { return k.Label },
+		func(k kindOption) string { return "" },
+	)
+	if err != nil {
+		return "", err
+	}
+	return selected.Value, nil
+}
+
+func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
+	client, err := requireAuth(ctx, cmd)
+	if err != nil {
+		return err
+	}
+	w := cmd.Root().Writer
+
+	record := map[string]any{
+		"$type":     atproto.CollectionWorkScopeTag,
+		"createdAt": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Key (required - lowercase-hyphenated)
+	key := cmd.String("key")
+	if key == "" {
+		key, err = prompt.ReadLineWithDefault(w, os.Stdin, "Key", "required, lowercase-hyphenated (e.g. climate-action)", "")
+		if err != nil {
+			return err
+		}
+		if key == "" {
+			return fmt.Errorf("key is required")
+		}
+	}
+	if !keyPattern.MatchString(key) {
+		return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
+	}
+	record["key"] = key
+
+	// Label (required)
+	label := cmd.String("label")
+	if label == "" {
+		label, err = prompt.ReadLineWithDefault(w, os.Stdin, "Label", "required, human-readable name", "")
+		if err != nil {
+			return err
+		}
+		if label == "" {
+			return fmt.Errorf("label is required")
+		}
+	}
+	record["label"] = label
+
+	// Kind (optional)
+	kind := cmd.String("kind")
+	if kind == "" {
+		fmt.Fprintln(w, "\nSelect kind (optional):")
+		kind, err = promptKind(w)
+		if err != nil && err != menu.ErrCancelled {
+			return err
+		}
+	}
+	if kind != "" {
+		record["kind"] = kind
+	}
+
+	// Optional fields
+	fmt.Fprintln(w)
+	if menu.Confirm(w, os.Stdin, "Add optional fields (description, parent, aliases)?") {
+		// Description
+		desc, err := prompt.ReadOptionalField(w, os.Stdin, "Description", "max 1000 graphemes")
+		if err != nil {
+			return err
+		}
+		if desc != "" {
+			record["description"] = desc
+		}
+
+		// Parent
+		fmt.Fprintln(w)
+		if menu.Confirm(w, os.Stdin, "Set parent tag (for hierarchy)?") {
+			parent, err := selectWorkScope(ctx, client, w)
+			if err != nil && err != menu.ErrCancelled {
+				return err
+			}
+			if parent != nil {
+				record["parent"] = buildStrongRef(parent.URI, parent.CID)
+			}
+		}
+
+		// Aliases
+		fmt.Fprintln(w)
+		if menu.Confirm(w, os.Stdin, "Add aliases?") {
+			var aliases []string
+			for {
+				alias, err := prompt.ReadOptionalField(w, os.Stdin, "Alias", "alternative name, or blank to finish")
+				if err != nil {
+					return err
+				}
+				if alias == "" {
+					break
+				}
+				aliases = append(aliases, alias)
+			}
+			if len(aliases) > 0 {
+				record["aliases"] = aliases
+			}
+		}
+	}
+
+	uri, _, err := atproto.CreateRecord(ctx, client, atproto.CollectionWorkScopeTag, record)
+	if err != nil {
+		return fmt.Errorf("failed to create work scope tag: %w", err)
+	}
+
+	fmt.Fprintf(w, "\n\033[32m✓\033[0m Created work scope tag: %s\n", uri)
+	return nil
+}
+
+func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
+	client, err := requireAuth(ctx, cmd)
+	if err != nil {
+		return err
+	}
+	w := cmd.Root().Writer
+	did := client.AccountDID.String()
+
+	arg := cmd.Args().First()
+	var uri string
+	if arg == "" {
+		scopes, err := fetchWorkScopes(ctx, client, did)
+		if err != nil {
+			return err
+		}
+		selected, err := menu.SingleSelect(w, scopes, "work scope",
+			func(s workScopeOption) string { return s.Label },
+			func(s workScopeOption) string {
+				if s.Kind != "" {
+					return s.Kind
+				}
+				return s.Key
+			},
+		)
+		if err != nil {
+			return err
+		}
+		uri = selected.URI
+	} else {
+		uri = resolveRecordURI(did, atproto.CollectionWorkScopeTag, arg)
+	}
+
+	aturi, err := syntax.ParseATURI(uri)
+	if err != nil {
+		return fmt.Errorf("invalid URI: %w", err)
+	}
+
+	existing, cid, err := atproto.GetRecord(ctx, client, did, aturi.Collection().String(), aturi.RecordKey().String())
+	if err != nil {
+		return fmt.Errorf("work scope tag not found: %s", extractRkey(uri))
+	}
+
+	// Get current values
+	currentKey := mapStr(existing, "key")
+	currentLabel := mapStr(existing, "label")
+	currentKind := mapStr(existing, "kind")
+	currentDesc := mapStr(existing, "description")
+
+	changed := false
+	isInteractive := cmd.String("key") == "" && cmd.String("label") == "" && cmd.String("kind") == ""
+
+	if isInteractive {
+		// Key
+		newKey, err := prompt.ReadLineWithDefault(w, os.Stdin, "Key", "required, lowercase-hyphenated", currentKey)
+		if err != nil {
+			return err
+		}
+		if newKey != currentKey {
+			if !keyPattern.MatchString(newKey) {
+				return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
+			}
+			existing["key"] = newKey
+			changed = true
+		}
+
+		// Label
+		newLabel, err := prompt.ReadLineWithDefault(w, os.Stdin, "Label", "required", currentLabel)
+		if err != nil {
+			return err
+		}
+		if newLabel != currentLabel {
+			existing["label"] = newLabel
+			changed = true
+		}
+
+		// Kind
+		newKind, err := prompt.ReadLineWithDefault(w, os.Stdin, "Kind", "topic/language/domain/method/tag", currentKind)
+		if err != nil {
+			return err
+		}
+		if newKind != currentKind {
+			if newKind == "" {
+				delete(existing, "kind")
+			} else {
+				existing["kind"] = newKind
+			}
+			changed = true
+		}
+
+		// Description
+		newDesc, err := prompt.ReadLineWithDefault(w, os.Stdin, "Description", "optional", currentDesc)
+		if err != nil {
+			return err
+		}
+		if newDesc != currentDesc {
+			if newDesc == "" {
+				delete(existing, "description")
+			} else {
+				existing["description"] = newDesc
+			}
+			changed = true
+		}
+
+		// Parent
+		existingParent := mapMap(existing, "parent")
+		parentLabel := "Add parent tag?"
+		if existingParent != nil {
+			parentLabel = "Replace parent tag?"
+		}
+		fmt.Fprintln(w)
+		if menu.Confirm(w, os.Stdin, parentLabel) {
+			parent, err := selectWorkScope(ctx, client, w)
+			if err != nil && err != menu.ErrCancelled {
+				return err
+			}
+			if parent != nil {
+				existing["parent"] = buildStrongRef(parent.URI, parent.CID)
+				changed = true
+			}
+		}
+	} else {
+		// Non-interactive mode
+		newKey := cmd.String("key")
+		if newKey != "" && newKey != currentKey {
+			if !keyPattern.MatchString(newKey) {
+				return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
+			}
+			existing["key"] = newKey
+			changed = true
+		}
+
+		newLabel := cmd.String("label")
+		if newLabel != "" && newLabel != currentLabel {
+			existing["label"] = newLabel
+			changed = true
+		}
+
+		newKind := cmd.String("kind")
+		if newKind != "" && newKind != currentKind {
+			existing["kind"] = newKind
+			changed = true
+		}
+
+		newDesc := cmd.String("description")
+		if newDesc != "" && newDesc != currentDesc {
+			existing["description"] = newDesc
+			changed = true
+		}
+	}
+
+	if !changed {
+		fmt.Fprintln(w, "No changes.")
+		return nil
+	}
+
+	resultURI, err := atproto.PutRecord(ctx, client, did, aturi.Collection().String(), aturi.RecordKey().String(), existing, &cid)
+	if err != nil {
+		return fmt.Errorf("failed to update work scope tag: %w", err)
+	}
+
+	fmt.Fprintf(w, "\033[32m✓\033[0m Updated work scope tag: %s\n", resultURI)
+	return nil
+}
+
+func runWorkScopeDelete(ctx context.Context, cmd *cli.Command) error {
+	client, err := requireAuth(ctx, cmd)
+	if err != nil {
+		return err
+	}
+	w := cmd.Root().Writer
+	did := client.AccountDID.String()
+
+	id := cmd.String("id")
+	if id == "" {
+		id = cmd.Args().First()
+	}
+
+	if id == "" {
+		scopes, err := fetchWorkScopes(ctx, client, did)
+		if err != nil {
+			return err
+		}
+		selected, err := menu.MultiSelect(w, scopes, "work scope",
+			func(s workScopeOption) string { return s.Label },
+			func(s workScopeOption) string {
+				if s.Kind != "" {
+					return s.Kind
+				}
+				return s.Key
+			},
+		)
+		if err != nil {
+			return err
+		}
+		if !menu.ConfirmBulkDelete(w, os.Stdin, len(selected), "work scope tag") {
+			fmt.Fprintln(w, "Aborted.")
+			return nil
+		}
+		for _, s := range selected {
+			aturi, _ := syntax.ParseATURI(s.URI)
+			if err := atproto.DeleteRecord(ctx, client, did, aturi.Collection().String(), aturi.RecordKey().String()); err != nil {
+				fmt.Fprintf(w, "  Warning: %v\n", err)
+			} else {
+				fmt.Fprintf(w, "Deleted work scope tag: %s\n", s.Rkey)
+			}
+		}
+		return nil
+	}
+
+	uri := resolveRecordURI(did, atproto.CollectionWorkScopeTag, id)
+	if !cmd.Bool("force") {
+		if !menu.Confirm(w, os.Stdin, fmt.Sprintf("Delete work scope tag %s?", extractRkey(uri))) {
+			fmt.Fprintln(w, "Aborted.")
+			return nil
+		}
+	}
+	aturi, err := syntax.ParseATURI(uri)
+	if err != nil {
+		return fmt.Errorf("invalid URI: %w", err)
+	}
+	if err := atproto.DeleteRecord(ctx, client, did, aturi.Collection().String(), aturi.RecordKey().String()); err != nil {
+		return fmt.Errorf("failed to delete work scope tag: %w", err)
+	}
+	fmt.Fprintf(w, "Deleted work scope tag: %s\n", extractRkey(uri))
+	return nil
+}
+
+func runWorkScopeList(ctx context.Context, cmd *cli.Command) error {
+	client, err := requireAuth(ctx, cmd)
+	if err != nil {
+		return err
+	}
+
+	w := cmd.Root().Writer
+	did := client.AccountDID.String()
+
+	entries, err := atproto.ListAllRecords(ctx, client, did, atproto.CollectionWorkScopeTag)
+	if err != nil {
+		return fmt.Errorf("failed to list work scope tags: %w", err)
+	}
+
+	// Filter by kind if specified
+	kindFilter := cmd.String("kind")
+	if kindFilter != "" {
+		var filtered []atproto.RecordEntry
+		for _, e := range entries {
+			if k := mapStr(e.Value, "kind"); k == kindFilter {
+				filtered = append(filtered, e)
+			}
+		}
+		entries = filtered
+	}
+
+	if cmd.Bool("json") {
+		var records []map[string]any
+		for _, e := range entries {
+			records = append(records, map[string]any{"uri": e.URI, "record": e.Value})
+		}
+		fmt.Fprintln(w, prettyJSON(records))
+		return nil
+	}
+
+	fmt.Fprintf(w, "\033[1m%-15s %-25s %-30s %-12s %-10s %s\033[0m\n", "ID", "KEY", "LABEL", "KIND", "PARENT", "CREATED")
+	fmt.Fprintf(w, "%-15s %-25s %-30s %-12s %-10s %s\n",
+		strings.Repeat("-", 13), strings.Repeat("-", 23),
+		strings.Repeat("-", 28), strings.Repeat("-", 10),
+		strings.Repeat("-", 8), strings.Repeat("-", 10))
+
+	for _, e := range entries {
+		aturi, err := syntax.ParseATURI(e.URI)
+		if err != nil {
+			continue
+		}
+		id := string(aturi.RecordKey())
+
+		key := mapStr(e.Value, "key")
+		if len(key) > 23 {
+			key = key[:20] + "..."
+		}
+
+		label := mapStr(e.Value, "label")
+		if len(label) > 28 {
+			label = label[:25] + "..."
+		}
+
+		kind := mapStr(e.Value, "kind")
+		if kind == "" {
+			kind = "-"
+		}
+
+		parentRkey := "-"
+		if parent := mapMap(e.Value, "parent"); parent != nil {
+			parentRkey = extractRkey(mapStr(parent, "uri"))
+			if len(parentRkey) > 8 {
+				parentRkey = parentRkey[:5] + "..."
+			}
+		}
+
+		created := "-"
+		if createdAt := mapStr(e.Value, "createdAt"); createdAt != "" {
+			if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+				created = t.Format("2006-01-02")
+			}
+		}
+
+		fmt.Fprintf(w, "%-15s %-25s %-30s %-12s %-10s %s\n", id, key, label, kind, parentRkey, created)
+	}
+
+	if len(entries) == 0 {
+		fmt.Fprintln(w, "\033[90m(no work scope tags found)\033[0m")
+	}
+	return nil
+}
+
+func runWorkScopeGet(ctx context.Context, cmd *cli.Command) error {
+	return runSimpleGet(ctx, cmd, atproto.CollectionWorkScopeTag, "workscope")
+}
