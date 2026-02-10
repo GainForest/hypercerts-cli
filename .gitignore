@@ -26,5 +26,5 @@ vendor/
 # VHS tape files (used to generate demo.gif locally)
 *.tape
 
-# Issue tracking
-.beads/
+# Issue tracking (beads) - runtime/DB files ignored via .beads/.gitignore
+# Do NOT ignore .beads/ itself - JSONL, config, and metadata must be tracked
