@@ -19,7 +19,11 @@ import (
 // ErrNoAuthSession is returned when no auth session file is found.
 var ErrNoAuthSession = errors.New("no auth session found")
 
-// AuthSession represents a persisted authentication session.
+// AuthSession stores the authentication state.
+// WARNING: The app password is stored in plaintext at ~/.local/state/hc/auth-session.json
+// with 0600 permissions. This is required for automatic token refresh.
+// Users should use ATProto app passwords (not their main password).
+// TODO: Consider OS keychain integration for password storage.
 type AuthSession struct {
 	DID          syntax.DID `json:"did"`
 	PDS          string     `json:"pds"`

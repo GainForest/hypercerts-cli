@@ -95,6 +95,9 @@ hc account logout                           # Delete session
 hc account status                           # Show DID, handle, PDS
 ```
 
+> **Security Note:** Your app password is stored in plaintext at `~/.local/state/hc/auth-session.json`.
+> Always use an [ATProto app password](https://bsky.app/settings/app-passwords), never your main account password.
+
 ### Activities
 
 Activities are the core hypercert record (`org.hypercerts.claim.activity`).

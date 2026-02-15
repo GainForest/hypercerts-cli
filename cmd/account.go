@@ -46,6 +46,8 @@ func runAccountLogin(ctx context.Context, cmd *cli.Command) error {
 
 	w := cmd.Root().Writer
 	fmt.Fprintf(w, "Logged in as %s (%s)\n", sessResp.Handle, sessResp.Did)
+	fmt.Fprintf(w, "⚠ Session saved to ~/.local/state/hc/auth-session.json (includes app password in plaintext)\n")
+	fmt.Fprintf(w, "  Tip: Use an ATProto app password, not your main account password\n")
 	return nil
 }
 

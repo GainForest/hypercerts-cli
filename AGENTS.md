@@ -226,7 +226,7 @@ hyper/
 
 ## Key technical details
 
-- Auth session at `~/.local/state/hyper/auth-session.json` (XDG state, 0600 perms)
+- Auth session at `~/.local/state/hc/auth-session.json` (XDG state, 0600 perms, plaintext password storage)
 - All record creates use `Validate: false` for unpublished lexicons
 - No runtime schema compilation -- records built with explicit typed fields
 - `xdg.Reload()` required after `t.Setenv("XDG_STATE_HOME", ...)` in tests
