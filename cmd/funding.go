@@ -120,6 +120,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -132,6 +135,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&to).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -144,6 +150,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&amount).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -156,6 +165,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&currency).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -263,6 +275,9 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 
 		err := form.Run()
 		if err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
+			}
 			return err
 		}
 
@@ -405,8 +420,8 @@ func runFundingEdit(ctx context.Context, cmd *cli.Command) error {
 	).WithTheme(style.Theme())
 
 	if err := form.Run(); err != nil {
-		if err == huh.ErrUserAborted {
-			return nil
+		if errors.Is(err, huh.ErrUserAborted) {
+			return fmt.Errorf("cancelled")
 		}
 		return err
 	}

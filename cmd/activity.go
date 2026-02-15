@@ -101,6 +101,9 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&title).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -113,6 +116,9 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&shortDesc).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -223,8 +229,8 @@ func promptContributors(ctx context.Context, client *atclient.APIClient, w io.Wr
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				break
+			if errors.Is(err, huh.ErrUserAborted) {
+				return nil, fmt.Errorf("cancelled")
 			}
 			return nil, err
 		}
@@ -403,8 +409,8 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				return nil
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
 			}
 			return err
 		}

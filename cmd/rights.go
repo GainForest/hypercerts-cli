@@ -133,6 +133,9 @@ func createRightsInline(ctx context.Context, client *atclient.APIClient, w io.Wr
 	).WithTheme(style.Theme())
 
 	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil, fmt.Errorf("cancelled")
+		}
 		return nil, err
 	}
 
@@ -221,6 +224,9 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
+			}
 			return err
 		}
 	} else {
@@ -234,6 +240,9 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&name).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -246,6 +255,9 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&rightsType).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -258,6 +270,9 @@ func runRightsCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&description).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -392,8 +407,8 @@ func runRightsEdit(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				return nil
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
 			}
 			return err
 		}

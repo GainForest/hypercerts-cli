@@ -118,8 +118,8 @@ func promptEvaluators(w io.Writer) ([]string, error) {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				break
+			if errors.Is(err, huh.ErrUserAborted) {
+				return nil, fmt.Errorf("cancelled")
 			}
 			return nil, err
 		}
@@ -166,8 +166,8 @@ func promptContentURIsForEval(w io.Writer) ([]map[string]any, error) {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				break
+			if errors.Is(err, huh.ErrUserAborted) {
+				return nil, fmt.Errorf("cancelled")
 			}
 			return nil, err
 		}
@@ -219,6 +219,9 @@ func promptScore(w io.Writer) (map[string]any, error) {
 	).WithTheme(style.Theme())
 
 	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil, fmt.Errorf("cancelled")
+		}
 		return nil, err
 	}
 
@@ -382,6 +385,9 @@ func runEvaluationCreate(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
+			}
 			return err
 		}
 
@@ -582,8 +588,8 @@ func runEvaluationEdit(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				return nil
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
 			}
 			return err
 		}

@@ -180,6 +180,9 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&metric).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -192,6 +195,9 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&unit).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -204,6 +210,9 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&value).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -290,6 +299,9 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 
 		err := form.Run()
 		if err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
+			}
 			return err
 		}
 
@@ -416,8 +428,8 @@ func runMeasurementEdit(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				return nil
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
 			}
 			return err
 		}
@@ -453,8 +465,8 @@ func runMeasurementEdit(ctx context.Context, cmd *cli.Command) error {
 			).WithTheme(style.Theme())
 
 			if err := optForm.Run(); err != nil {
-				if err == huh.ErrUserAborted {
-					return nil
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
 				}
 				return err
 			}

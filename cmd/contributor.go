@@ -133,6 +133,9 @@ func runContributorCreate(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
+			}
 			return err
 		}
 	}
@@ -230,8 +233,8 @@ func runContributorEdit(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				return nil
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
 			}
 			return err
 		}
@@ -381,6 +384,9 @@ func createContributorInline(ctx context.Context, client *atclient.APIClient, w 
 	).WithTheme(style.Theme())
 
 	if err := form.Run(); err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil, fmt.Errorf("cancelled")
+		}
 		return nil, err
 	}
 

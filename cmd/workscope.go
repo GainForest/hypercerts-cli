@@ -202,6 +202,9 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
+			}
 			return err
 		}
 
@@ -243,8 +246,8 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 				).WithTheme(style.Theme())
 
 				if err := form.Run(); err != nil {
-					if err == huh.ErrUserAborted {
-						break
+					if errors.Is(err, huh.ErrUserAborted) {
+						return fmt.Errorf("cancelled")
 					}
 					return err
 				}
@@ -391,8 +394,8 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				return nil
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
 			}
 			return err
 		}

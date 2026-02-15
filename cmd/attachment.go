@@ -197,8 +197,8 @@ func promptContentURIs(w io.Writer) ([]map[string]any, error) {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				break
+			if errors.Is(err, huh.ErrUserAborted) {
+				return nil, fmt.Errorf("cancelled")
 			}
 			return nil, err
 		}
@@ -249,6 +249,9 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 					return nil
 				}).Value(&title).WithTheme(style.Theme()).Run()
 			if err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					return fmt.Errorf("cancelled")
+				}
 				return err
 			}
 		}
@@ -356,6 +359,9 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
+			}
 			return err
 		}
 
@@ -518,8 +524,8 @@ func runAttachmentEdit(ctx context.Context, cmd *cli.Command) error {
 		).WithTheme(style.Theme())
 
 		if err := form.Run(); err != nil {
-			if err == huh.ErrUserAborted {
-				return nil
+			if errors.Is(err, huh.ErrUserAborted) {
+				return fmt.Errorf("cancelled")
 			}
 			return err
 		}
