@@ -97,32 +97,58 @@ func fetchAttachments(ctx context.Context, client *atclient.APIClient, did strin
 }
 
 func fetchAttachmentsForActivity(ctx context.Context, client *atclient.APIClient, did, activityURI string) ([]attachmentOption, error) {
-	all, err := fetchAttachments(ctx, client, did)
+	entries, err := atproto.ListAllRecords(ctx, client, did, atproto.CollectionAttachment)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list attachments: %w", err)
 	}
 
-	// Need to re-fetch records to check subjects
-	entries, _ := atproto.ListAllRecords(ctx, client, did, atproto.CollectionAttachment)
-	uriSet := make(map[string]bool)
+	var result []attachmentOption
 	for _, e := range entries {
+		// Check if this attachment has the activityURI in its subjects
+		hasActivity := false
 		if subjects := mapSlice(e.Value, "subjects"); subjects != nil {
 			for _, s := range subjects {
 				if subMap, ok := s.(map[string]any); ok {
 					if mapStr(subMap, "uri") == activityURI {
-						uriSet[e.URI] = true
+						hasActivity = true
 						break
 					}
 				}
 			}
 		}
-	}
 
-	var result []attachmentOption
-	for _, a := range all {
-		if uriSet[a.URI] {
-			result = append(result, a)
+		if !hasActivity {
+			continue
 		}
+
+		// Build attachmentOption for this entry
+		aturi, err := syntax.ParseATURI(e.URI)
+		if err != nil {
+			continue
+		}
+		subjectCount := 0
+		if subjects := mapSlice(e.Value, "subjects"); subjects != nil {
+			subjectCount = len(subjects)
+		}
+		contentCount := 0
+		if content := mapSlice(e.Value, "content"); content != nil {
+			contentCount = len(content)
+		}
+		created := ""
+		if createdAt := mapStr(e.Value, "createdAt"); createdAt != "" {
+			if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+				created = t.Format("2006-01-02")
+			}
+		}
+		result = append(result, attachmentOption{
+			URI:          e.URI,
+			Rkey:         string(aturi.RecordKey()),
+			Title:        mapStr(e.Value, "title"),
+			ContentType:  mapStr(e.Value, "contentType"),
+			SubjectCount: subjectCount,
+			ContentCount: contentCount,
+			Created:      created,
+		})
 	}
 	return result, nil
 }
