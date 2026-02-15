@@ -103,6 +103,10 @@ func selectLocations(ctx context.Context, client *atclient.APIClient, w io.Write
 	for {
 		loc, err := selectLocation(ctx, client, w)
 		if err != nil {
+			// If user cancelled and we already have some locations, return them
+			if len(result) > 0 {
+				return result, nil
+			}
 			return nil, err
 		}
 		result = append(result, *loc)
