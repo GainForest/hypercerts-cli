@@ -145,6 +145,10 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 		record["workScope"] = ws
 		hasFlags = true
 	}
+	if s := cmd.String("long-description"); s != "" {
+		record["description"] = s
+		hasFlags = true
+	}
 
 	if hasFlags {
 		// Non-interactive: require title and description via flags or prompt fallback
@@ -357,6 +361,10 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 	}
 	if d := cmd.String("description"); d != "" {
 		existing["shortDescription"] = d
+		changed = true
+	}
+	if s := cmd.String("long-description"); s != "" {
+		existing["description"] = s
 		changed = true
 	}
 	if s := cmd.String("start-date"); s != "" {

@@ -164,6 +164,7 @@ var cmdActivity = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "title", Usage: "activity title"},
 				&cli.StringFlag{Name: "description", Usage: "short description"},
+				&cli.StringFlag{Name: "long-description", Usage: "longer description text"},
 				&cli.StringFlag{Name: "start-date", Usage: "start date (RFC3339 or YYYY-MM-DD)"},
 				&cli.StringFlag{Name: "end-date", Usage: "end date (RFC3339 or YYYY-MM-DD)"},
 				&cli.StringFlag{Name: "work-scope", Usage: "work scope string"},
@@ -178,6 +179,7 @@ var cmdActivity = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "title", Usage: "new title"},
 				&cli.StringFlag{Name: "description", Usage: "new short description"},
+				&cli.StringFlag{Name: "long-description", Usage: "new long description"},
 				&cli.StringFlag{Name: "start-date", Usage: "new start date"},
 				&cli.StringFlag{Name: "end-date", Usage: "new end date"},
 				&cli.StringFlag{Name: "work-scope", Usage: "new work scope"},
