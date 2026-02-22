@@ -57,6 +57,54 @@ func fetchActivities(ctx context.Context, client *atclient.APIClient, did string
 	return result, nil
 }
 
+// buildWorkScopeCel parses comma-separated label keys and builds a workScopeCel record.
+// Labels are trimmed and deduplicated. The CEL expression is auto-generated as scope.hasAll([...]).
+func buildWorkScopeCel(csv string) (map[string]any, error) {
+	parts := strings.Split(csv, ",")
+	seen := make(map[string]bool)
+	var labels []string
+	for _, p := range parts {
+		key := strings.TrimSpace(p)
+		if key == "" {
+			continue
+		}
+		if !keyPattern.MatchString(key) {
+			return nil, fmt.Errorf("invalid label key %q: must be lowercase letters/numbers separated by hyphens", key)
+		}
+		if !seen[key] {
+			seen[key] = true
+			labels = append(labels, key)
+		}
+	}
+	if len(labels) == 0 {
+		return nil, fmt.Errorf("at least one label is required for --work-scope-cel")
+	}
+
+	// Build CEL expression
+	var expr string
+	if len(labels) == 1 {
+		expr = fmt.Sprintf("scope.has('%s')", labels[0])
+	} else {
+		quoted := make([]string, len(labels))
+		for i, l := range labels {
+			quoted[i] = fmt.Sprintf("'%s'", l)
+		}
+		expr = fmt.Sprintf("scope.hasAll([%s])", strings.Join(quoted, ", "))
+	}
+
+	labelSlice := make([]any, len(labels))
+	for i, l := range labels {
+		labelSlice[i] = l
+	}
+
+	return map[string]any{
+		"$type":      atproto.CollectionActivity + "#workScopeCel",
+		"expression": expr,
+		"labels":     labelSlice,
+		"version":    "v1",
+	}, nil
+}
+
 func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 	client, err := requireAuth(ctx, cmd)
 	if err != nil {
@@ -87,6 +135,14 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 			"$type": atproto.CollectionActivity + "#workScopeString",
 			"scope": s,
 		}
+		hasFlags = true
+	}
+	if s := cmd.String("work-scope-cel"); s != "" {
+		ws, err := buildWorkScopeCel(s)
+		if err != nil {
+			return err
+		}
+		record["workScope"] = ws
 		hasFlags = true
 	}
 
@@ -316,6 +372,14 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 			"$type": atproto.CollectionActivity + "#workScopeString",
 			"scope": s,
 		}
+		changed = true
+	}
+	if s := cmd.String("work-scope-cel"); s != "" {
+		ws, err := buildWorkScopeCel(s)
+		if err != nil {
+			return err
+		}
+		existing["workScope"] = ws
 		changed = true
 	}
 
@@ -696,7 +760,18 @@ func runActivityList(ctx context.Context, cmd *cli.Command) error {
 
 		scope := "-"
 		if ws, ok := e.Value["workScope"].(map[string]any); ok {
-			if s := mapStr(ws, "scope"); s != "" {
+			wsType := mapStr(ws, "$type")
+			if strings.HasSuffix(wsType, "#workScopeCel") {
+				if labels, ok := ws["labels"].([]any); ok {
+					var keys []string
+					for _, l := range labels {
+						if s, ok := l.(string); ok {
+							keys = append(keys, s)
+						}
+					}
+					scope = strings.Join(keys, ",")
+				}
+			} else if s := mapStr(ws, "scope"); s != "" {
 				scope = s
 			}
 		}
