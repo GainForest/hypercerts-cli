@@ -314,7 +314,7 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 		}
 	} else {
 		// Interactive: show all fields at once using huh form
-		var shortDesc, description string
+		var shortDesc string
 		var addLocation bool
 
 		form := huh.NewForm(
@@ -342,12 +342,6 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 					Description("Brief summary, max 300 chars (optional)").
 					CharLimit(300).
 					Value(&shortDesc),
-
-				huh.NewInput().
-					Title("Description").
-					Description("Longer description, max 3000 chars (optional)").
-					CharLimit(3000).
-					Value(&description),
 			).Title("Attachment Details"),
 
 			huh.NewGroup(
@@ -371,9 +365,6 @@ func runAttachmentCreate(ctx context.Context, cmd *cli.Command) error {
 		}
 		if shortDesc != "" {
 			record["shortDescription"] = shortDesc
-		}
-		if description != "" {
-			record["description"] = description
 		}
 
 		// Select subjects (activities) - needs API + menu
@@ -459,7 +450,6 @@ func runAttachmentEdit(ctx context.Context, cmd *cli.Command) error {
 	currentTitle := mapStr(existing, "title")
 	currentContentType := mapStr(existing, "contentType")
 	currentShortDesc := mapStr(existing, "shortDescription")
-	currentDesc := mapStr(existing, "description")
 
 	// Get new values from flags or prompts
 	newTitle := cmd.String("title")
@@ -473,7 +463,6 @@ func runAttachmentEdit(ctx context.Context, cmd *cli.Command) error {
 		// Interactive mode
 		newTitle = currentTitle
 		newShortDesc := currentShortDesc
-		newDesc := currentDesc
 		var editLocation bool
 
 		contentTypeOpts := contentTypeOptions(currentContentType)
@@ -507,12 +496,6 @@ func runAttachmentEdit(ctx context.Context, cmd *cli.Command) error {
 					Description("Max 300 chars").
 					CharLimit(300).
 					Value(&newShortDesc),
-
-				huh.NewInput().
-					Title("Description").
-					Description("Max 3000 chars").
-					CharLimit(3000).
-					Value(&newDesc),
 			).Title("Edit Attachment"),
 
 			huh.NewGroup(
@@ -532,10 +515,6 @@ func runAttachmentEdit(ctx context.Context, cmd *cli.Command) error {
 
 		if newShortDesc != currentShortDesc {
 			existing["shortDescription"] = newShortDesc
-			changed = true
-		}
-		if newDesc != currentDesc {
-			existing["description"] = newDesc
 			changed = true
 		}
 
