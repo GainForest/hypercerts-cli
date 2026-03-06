@@ -90,6 +90,8 @@ func BuildApp(w io.Writer) *cli.Command {
 			cmdCollection,
 			cmdFunding,
 			cmdWorkScope,
+			cmdProfile,
+			cmdOrganization,
 		},
 	}
 }
@@ -825,6 +827,205 @@ var cmdWorkScope = &cli.Command{
 			Usage:     "get work scope tag details",
 			ArgsUsage: "<id|at-uri>",
 			Action:    runWorkScopeGet,
+		},
+	},
+}
+
+// --- Badge ---
+
+var cmdBadge = &cli.Command{
+	Name:  "badge",
+	Usage: "manage badge definitions, awards, and responses",
+	Commands: []*cli.Command{
+		{
+			Name:  "definition",
+			Usage: "manage badge definitions",
+			Commands: []*cli.Command{
+				{
+					Name:  "create",
+					Usage: "create a new badge definition",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: "title", Usage: "badge title (max 256 chars)"},
+						&cli.StringFlag{Name: "type", Usage: "badge type (max 100 chars)"},
+						&cli.StringFlag{Name: "description", Usage: "description (max 5000 chars)"},
+					},
+					Action: runBadgeDefinitionCreate,
+				},
+				{
+					Name:    "ls",
+					Aliases: []string{"list"},
+					Usage:   "list badge definitions",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+					},
+					Action: runBadgeDefinitionList,
+				},
+				{
+					Name:      "get",
+					Usage:     "get badge definition details",
+					ArgsUsage: "<id|at-uri>",
+					Action:    runBadgeDefinitionGet,
+				},
+				{
+					Name:  "delete",
+					Usage: "delete badge definition(s)",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: "id", Usage: "badge definition ID, or select interactively"},
+						&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+					},
+					Action: runBadgeDefinitionDelete,
+				},
+			},
+		},
+		{
+			Name:  "award",
+			Usage: "manage badge awards",
+			Commands: []*cli.Command{
+				{
+					Name:  "create",
+					Usage: "create a new badge award",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: "badge", Usage: "badge definition AT-URI"},
+						&cli.StringFlag{Name: "subject", Usage: "recipient DID or AT-URI"},
+						&cli.StringFlag{Name: "note", Usage: "optional note (max 500 chars)"},
+						&cli.StringFlag{Name: "url", Usage: "optional URL (max 2048 chars)"},
+					},
+					Action: runBadgeAwardCreate,
+				},
+				{
+					Name:    "ls",
+					Aliases: []string{"list"},
+					Usage:   "list badge awards",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+					},
+					Action: runBadgeAwardList,
+				},
+				{
+					Name:      "get",
+					Usage:     "get badge award details",
+					ArgsUsage: "<id|at-uri>",
+					Action:    runBadgeAwardGet,
+				},
+				{
+					Name:  "delete",
+					Usage: "delete badge award(s)",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: "id", Usage: "badge award ID, or select interactively"},
+						&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+					},
+					Action: runBadgeAwardDelete,
+				},
+			},
+		},
+		{
+			Name:  "response",
+			Usage: "manage badge responses",
+			Commands: []*cli.Command{
+				{
+					Name:  "create",
+					Usage: "create a new badge response",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: "badge-award", Usage: "badge award AT-URI"},
+						&cli.StringFlag{Name: "response", Usage: "accepted or rejected"},
+						&cli.StringFlag{Name: "weight", Usage: "optional weight (max 50 chars)"},
+					},
+					Action: runBadgeResponseCreate,
+				},
+				{
+					Name:    "ls",
+					Aliases: []string{"list"},
+					Usage:   "list badge responses",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+					},
+					Action: runBadgeResponseList,
+				},
+				{
+					Name:      "get",
+					Usage:     "get badge response details",
+					ArgsUsage: "<id|at-uri>",
+					Action:    runBadgeResponseGet,
+				},
+				{
+					Name:  "delete",
+					Usage: "delete badge response(s)",
+					Flags: []cli.Flag{
+						&cli.StringFlag{Name: "id", Usage: "badge response ID, or select interactively"},
+						&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+					},
+					Action: runBadgeResponseDelete,
+				},
+			},
+		},
+	},
+}
+
+var cmdProfile = &cli.Command{
+	Name:  "profile",
+	Usage: "manage actor profile (singleton record)",
+	Commands: []*cli.Command{
+		{
+			Name:  "set",
+			Usage: "create or update profile",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "display-name", Usage: "display name (max 64 graphemes)"},
+				&cli.StringFlag{Name: "description", Usage: "profile description (max 256 graphemes)"},
+				&cli.StringFlag{Name: "pronouns", Usage: "pronouns (max 20 graphemes)"},
+				&cli.StringFlag{Name: "website", Usage: "website URI"},
+			},
+			Action: runProfileSet,
+		},
+		{
+			Name:  "get",
+			Usage: "get profile details",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+			},
+			Action: runProfileGet,
+		},
+		{
+			Name:  "delete",
+			Usage: "delete profile",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+			},
+			Action: runProfileDelete,
+		},
+	},
+}
+
+var cmdOrganization = &cli.Command{
+	Name:    "organization",
+	Aliases: []string{"org"},
+	Usage:   "manage organization metadata (singleton record)",
+	Commands: []*cli.Command{
+		{
+			Name:  "set",
+			Usage: "create or update organization",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "type", Usage: "organization type(s), comma-separated (e.g., nonprofit,ngo)"},
+				&cli.StringFlag{Name: "founded-date", Usage: "founded date (YYYY-MM-DD)"},
+				&cli.StringFlag{Name: "url", Usage: "organization URL"},
+				&cli.StringFlag{Name: "url-label", Usage: "label for the URL"},
+			},
+			Action: runOrganizationSet,
+		},
+		{
+			Name:  "get",
+			Usage: "get organization details",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+			},
+			Action: runOrganizationGet,
+		},
+		{
+			Name:  "delete",
+			Usage: "delete organization",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+			},
+			Action: runOrganizationDelete,
 		},
 	},
 }
