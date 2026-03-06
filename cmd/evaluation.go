@@ -96,9 +96,9 @@ func fetchEvaluations(ctx context.Context, client *atclient.APIClient, did strin
 	return result, nil
 }
 
-// promptEvaluators prompts for evaluator DIDs.
-func promptEvaluators(w io.Writer) ([]string, error) {
-	var evaluators []string
+// promptEvaluators prompts for evaluator DIDs and returns them as DID objects.
+func promptEvaluators(w io.Writer) ([]map[string]any, error) {
+	var evaluators []map[string]any
 	for {
 		var did string
 		var addAnother bool
@@ -131,7 +131,10 @@ func promptEvaluators(w io.Writer) ([]string, error) {
 			}
 			break
 		}
-		evaluators = append(evaluators, did)
+		evaluators = append(evaluators, map[string]any{
+			"$type": "app.certified.defs#did",
+			"did":   did,
+		})
 
 		if !addAnother {
 			break
@@ -242,6 +245,7 @@ func promptScore(w io.Writer) (map[string]any, error) {
 	}
 
 	return map[string]any{
+		"$type": "org.hypercerts.context.evaluation#score",
 		"min":   min,
 		"max":   max,
 		"value": value,
@@ -420,6 +424,7 @@ func runEvaluationCreate(ctx context.Context, cmd *cli.Command) error {
 				return fmt.Errorf("score value must be between %d and %d", min, max)
 			}
 			record["score"] = map[string]any{
+				"$type": "org.hypercerts.context.evaluation#score",
 				"min":   min,
 				"max":   max,
 				"value": value,
