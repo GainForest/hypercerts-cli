@@ -62,7 +62,10 @@ func fetchFundings(ctx context.Context, client *atclient.APIClient, did string) 
 			}
 		}
 
-		from := mapStr(e.Value, "from")
+		from := ""
+		if fromObj := mapMap(e.Value, "from"); fromObj != nil {
+			from = mapStr(fromObj, "did")
+		}
 		if len(from) > 20 {
 			from = from[:17] + "..."
 		}
@@ -172,7 +175,10 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 
-		record["from"] = from
+		record["from"] = map[string]any{
+			"$type": "app.certified.defs#did",
+			"did":   from,
+		}
 		record["to"] = to
 		record["amount"] = amount
 		record["currency"] = currency
@@ -281,7 +287,10 @@ func runFundingCreate(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 
-		record["from"] = from
+		record["from"] = map[string]any{
+			"$type": "app.certified.defs#did",
+			"did":   from,
+		}
 		record["to"] = to
 		record["amount"] = amount
 		record["currency"] = currency
