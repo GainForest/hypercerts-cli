@@ -168,7 +168,9 @@ var cmdActivity = &cli.Command{
 			Usage: "create a new activity (hypercert)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "title", Usage: "activity title"},
-				&cli.StringFlag{Name: "description", Usage: "short description"},
+				&cli.StringFlag{Name: "short-description", Usage: "short description (max 300 graphemes)"},
+				&cli.StringFlag{Name: "avatar", Usage: "avatar image URL"},
+				&cli.StringFlag{Name: "banner", Usage: "banner image URL"},
 				&cli.StringFlag{Name: "long-description", Usage: "longer description text"},
 				&cli.StringFlag{Name: "start-date", Usage: "start date (RFC3339 or YYYY-MM-DD)"},
 				&cli.StringFlag{Name: "end-date", Usage: "end date (RFC3339 or YYYY-MM-DD)"},
@@ -679,7 +681,9 @@ var cmdCollection = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "title", Usage: "collection title"},
 				&cli.StringFlag{Name: "type", Usage: "collection type (e.g. project, favorites)"},
-				&cli.StringFlag{Name: "description", Usage: "short description"},
+				&cli.StringFlag{Name: "short-description", Usage: "short description (max 300 graphemes)"},
+				&cli.StringFlag{Name: "avatar", Usage: "avatar image URL"},
+				&cli.StringFlag{Name: "banner", Usage: "banner image URL"},
 			},
 			Action: runCollectionCreate,
 		},
@@ -690,6 +694,9 @@ var cmdCollection = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "title", Usage: "new title"},
 				&cli.StringFlag{Name: "type", Usage: "new type"},
+				&cli.StringFlag{Name: "short-description", Usage: "new short description (max 300 graphemes)"},
+				&cli.StringFlag{Name: "avatar", Usage: "new avatar image URL"},
+				&cli.StringFlag{Name: "banner", Usage: "new banner image URL"},
 			},
 			Action: runCollectionEdit,
 		},

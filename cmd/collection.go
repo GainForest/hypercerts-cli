@@ -145,7 +145,9 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 
 	title := cmd.String("title")
 	collType := cmd.String("type")
-	var shortDesc string
+	shortDesc := cmd.String("short-description")
+	avatarURL := cmd.String("avatar")
+	bannerURL := cmd.String("banner")
 	var addLocation bool
 
 	if title != "" {
@@ -154,8 +156,24 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 		if collType != "" {
 			record["type"] = collType
 		}
+		if shortDesc != "" {
+			record["shortDescription"] = shortDesc
+		}
+		if avatarURL != "" {
+			record["avatar"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   avatarURL,
+			}
+		}
+		if bannerURL != "" {
+			record["banner"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   bannerURL,
+			}
+		}
 	} else {
 		// Interactive: show all fields at once using huh form
+		var avatarInput, bannerInput string
 		form := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
@@ -180,6 +198,16 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 					Description("Brief summary (optional, max 300 graphemes)").
 					CharLimit(300).
 					Value(&shortDesc),
+
+				huh.NewInput().
+					Title("Avatar URL").
+					Description("Image URL for collection avatar (optional)").
+					Value(&avatarInput),
+
+				huh.NewInput().
+					Title("Banner URL").
+					Description("Image URL for collection banner (optional)").
+					Value(&bannerInput),
 			).Title("Collection Details"),
 
 			huh.NewGroup(
@@ -204,6 +232,18 @@ func runCollectionCreate(ctx context.Context, cmd *cli.Command) error {
 		}
 		if shortDesc != "" {
 			record["shortDescription"] = shortDesc
+		}
+		if avatarInput != "" {
+			record["avatar"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   avatarInput,
+			}
+		}
+		if bannerInput != "" {
+			record["banner"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   bannerInput,
+			}
 		}
 	}
 
@@ -279,14 +319,26 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 	currentTitle := mapStr(existing, "title")
 	currentType := mapStr(existing, "type")
 	currentDesc := mapStr(existing, "shortDescription")
+	
+	// Get current avatar/banner URIs
+	currentAvatar := ""
+	if avatarObj := mapMap(existing, "avatar"); avatarObj != nil {
+		currentAvatar = mapStr(avatarObj, "uri")
+	}
+	currentBanner := ""
+	if bannerObj := mapMap(existing, "banner"); bannerObj != nil {
+		currentBanner = mapStr(bannerObj, "uri")
+	}
 
 	changed := false
-	isInteractive := cmd.String("title") == "" && cmd.String("type") == ""
+	isInteractive := cmd.String("title") == "" && cmd.String("type") == "" && cmd.String("short-description") == "" && cmd.String("avatar") == "" && cmd.String("banner") == ""
 
 	if isInteractive {
 		newTitle := currentTitle
 		newType := currentType
 		newDesc := currentDesc
+		newAvatar := currentAvatar
+		newBanner := currentBanner
 		var editLocation, manageItems bool
 
 		existingLoc := mapMap(existing, "location")
@@ -318,6 +370,16 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 					Title("Short description").
 					Description("Optional").
 					Value(&newDesc),
+
+				huh.NewInput().
+					Title("Avatar URL").
+					Description("Optional").
+					Value(&newAvatar),
+
+				huh.NewInput().
+					Title("Banner URL").
+					Description("Optional").
+					Value(&newBanner),
 			).Title("Edit Collection"),
 
 			huh.NewGroup(
@@ -360,6 +422,28 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 			}
 			changed = true
 		}
+		if newAvatar != currentAvatar {
+			if newAvatar == "" {
+				delete(existing, "avatar")
+			} else {
+				existing["avatar"] = map[string]any{
+					"$type": "org.hypercerts.defs#uri",
+					"uri":   newAvatar,
+				}
+			}
+			changed = true
+		}
+		if newBanner != currentBanner {
+			if newBanner == "" {
+				delete(existing, "banner")
+			} else {
+				existing["banner"] = map[string]any{
+					"$type": "org.hypercerts.defs#uri",
+					"uri":   newBanner,
+				}
+			}
+			changed = true
+		}
 
 		if editLocation {
 			loc, err := selectLocation(ctx, client, w)
@@ -390,6 +474,30 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 		newType := cmd.String("type")
 		if newType != "" && newType != currentType {
 			existing["type"] = newType
+			changed = true
+		}
+
+		newDesc := cmd.String("short-description")
+		if newDesc != "" && newDesc != currentDesc {
+			existing["shortDescription"] = newDesc
+			changed = true
+		}
+
+		newAvatar := cmd.String("avatar")
+		if newAvatar != "" && newAvatar != currentAvatar {
+			existing["avatar"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   newAvatar,
+			}
+			changed = true
+		}
+
+		newBanner := cmd.String("banner")
+		if newBanner != "" && newBanner != currentBanner {
+			existing["banner"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   newBanner,
+			}
 			changed = true
 		}
 	}
