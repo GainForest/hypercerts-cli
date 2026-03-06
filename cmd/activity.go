@@ -98,7 +98,7 @@ func buildWorkScopeCel(csv string) (map[string]any, error) {
 	}
 
 	return map[string]any{
-		"$type":      atproto.CollectionActivity + "#workScopeCel",
+		"$type":      atproto.CollectionWorkScopeCel,
 		"expression": expr,
 		"labels":     labelSlice,
 		"version":    "v1",
