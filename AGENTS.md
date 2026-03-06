@@ -131,6 +131,11 @@ hyper
 ├── funding create/edit/delete/ls         # Funding receipts (alias: fund)
 ├── workscope create/edit/delete/ls       # Work scope tags (alias: ws)
 ├── contributor create/edit/delete/ls     # People (alias: contrib)
+├── contribution create/edit/delete/ls    # Contribution details
+├── acknowledgement create/edit/delete/ls # Bidirectional links (alias: ack)
+├── badge create/edit/delete/ls           # Badge definitions/awards/responses
+├── profile create/edit/delete/ls         # Actor profiles
+├── organization create/edit/delete/ls    # Organization metadata (alias: org)
 └── get/ls/resolve                        # Generic record operations
 ```
 
@@ -180,7 +185,7 @@ hyper/
     record.go                       # Top-level get / ls / resolve shortcuts
   internal/
     atproto/
-      collections.go                # NSID constants (11 record types incl. app.certified.location)
+      collections.go                # NSID constants (18 record types incl. app.certified.location)
       auth.go                       # Session persistence (~/.local/state/hc/auth-session.json)
       auth_test.go                  # Persist/load/wipe session tests
       client.go                     # CreateRecord, GetRecord, PutRecord, DeleteRecord, ListAllRecords
@@ -202,16 +207,23 @@ hyper/
 | Collection | CLI Command | Description |
 |------------|-------------|-------------|
 | `org.hypercerts.claim.activity` | `activity` | Hypercert activity (core impact claim) |
-| `org.hypercerts.claim.measurement` | `measurement` | Impact measurement (linked via subject strongRef) |
-| `app.certified.location` | `location` | Geographic location (LP v1.0, OGC CRS84) |
-| `org.hypercerts.claim.attachment` | `attachment` | Evidence attachment (linked via subjects[] array) |
-| `org.hypercerts.claim.rights` | `rights` | Rights and licenses (linked via strongRef) |
-| `org.hypercerts.claim.contributorInformation` | `contributor` | Contributor identity and display info |
-| `org.hypercerts.claim.contributionDetails` | - | Contribution role details (embedded in activity) |
-| `org.hypercerts.claim.collection` | `collection` | Collection/project grouping |
-| `org.hypercerts.claim.evaluation` | `evaluation` | Third-party evaluation |
+| `org.hypercerts.context.measurement` | `measurement` | Impact measurement |
+| `app.certified.location` | `location` | Geographic location (LP v1.0) |
+| `org.hypercerts.context.attachment` | `attachment` | Evidence attachment |
+| `org.hypercerts.claim.rights` | `rights` | Rights and licenses |
+| `org.hypercerts.claim.contributorInformation` | `contributor` | Contributor identity |
+| `org.hypercerts.claim.contribution` | `contribution` | Contribution details |
+| `org.hypercerts.collection` | `collection` | Collection/project grouping |
+| `org.hypercerts.context.evaluation` | `evaluation` | Third-party evaluation |
 | `org.hypercerts.funding.receipt` | `funding` | Funding receipt |
-| `org.hypercerts.helper.workScopeTag` | `workscope` | Work scope tag (hierarchical taxonomy) |
+| `org.hypercerts.workscope.tag` | `workscope` | Work scope tag |
+| `org.hypercerts.workscope.cel` | - | CEL expression (embedded in activity) |
+| `org.hypercerts.context.acknowledgement` | `acknowledgement` | Bidirectional link acknowledgement |
+| `app.certified.badge.definition` | `badge definition` | Badge definition |
+| `app.certified.badge.award` | `badge award` | Badge award |
+| `app.certified.badge.response` | `badge response` | Badge response |
+| `app.certified.actor.profile` | `profile` | Actor profile |
+| `app.certified.actor.organization` | `organization` | Organization metadata |
 
 ## Dependencies
 
@@ -306,7 +318,7 @@ Activity create presents all optional fields in the bubbletea form groups (Activ
 `deleteActivity` finds linked records by scanning measurement/attachment collections for matching subject URIs:
 
 ```go
-measurementURIs := findLinkedURIs(ctx, client, did, atproto.CollectionMeasurement, "subject", uri)
+measurementURIs := findLinkedURIs(ctx, client, did, atproto.CollectionMeasurement, "subjects", uri)
 attachmentURIs := findLinkedURIs(ctx, client, did, atproto.CollectionAttachment, "subjects", uri)
 ```
 
@@ -321,7 +333,7 @@ ref := buildStrongRef(activityURI, activityCID)
 
 // Use selectActivity to get URI+CID for linking
 uri, cid, err := selectActivity(ctx, client, w)
-record["subject"] = buildStrongRef(uri, cid)
+record["subjects"] = []any{buildStrongRef(uri, cid)}
 ```
 
 ### Location record pattern (LP v1.0)
