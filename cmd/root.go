@@ -80,9 +80,11 @@ func BuildApp(w io.Writer) *cli.Command {
 			// Domain commands
 			cmdActivity,
 			cmdContributor,
+			cmdContribution,
 			cmdLocation,
 			cmdMeasurement,
 			cmdAttachment,
+			cmdAcknowledgement,
 			cmdRights,
 			cmdEvaluation,
 			cmdCollection,
@@ -274,6 +276,62 @@ var cmdContributor = &cli.Command{
 	},
 }
 
+// --- Contribution ---
+
+var cmdContribution = &cli.Command{
+	Name:  "contribution",
+	Usage: "manage contribution records",
+	Commands: []*cli.Command{
+		{
+			Name:  "create",
+			Usage: "create a new contribution record",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "role", Usage: "contribution role (max 100 chars)"},
+				&cli.StringFlag{Name: "description", Usage: "contribution description (max 10000 chars)"},
+				&cli.StringFlag{Name: "start-date", Usage: "start date (YYYY-MM-DD)"},
+				&cli.StringFlag{Name: "end-date", Usage: "end date (YYYY-MM-DD)"},
+			},
+			Action: runContributionCreate,
+		},
+		{
+			Name:      "edit",
+			Usage:     "edit a contribution record",
+			ArgsUsage: "<id|at-uri>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "role", Usage: "new role"},
+				&cli.StringFlag{Name: "description", Usage: "new description"},
+				&cli.StringFlag{Name: "start-date", Usage: "new start date"},
+				&cli.StringFlag{Name: "end-date", Usage: "new end date"},
+			},
+			Action: runContributionEdit,
+		},
+		{
+			Name:  "delete",
+			Usage: "delete contribution record(s)",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "id", Usage: "contribution ID, or select interactively"},
+				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+			},
+			Action: runContributionDelete,
+		},
+		{
+			Name:    "ls",
+			Aliases: []string{"list"},
+			Usage:   "list contribution records",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+			},
+			Action: runContributionList,
+		},
+		{
+			Name:      "get",
+			Usage:     "get contribution details",
+			ArgsUsage: "<id|at-uri>",
+			Action:    runContributionGet,
+		},
+	},
+}
+
 // --- Measurement ---
 
 var cmdMeasurement = &cli.Command{
@@ -445,6 +503,52 @@ var cmdAttachment = &cli.Command{
 			Usage:     "get attachment details",
 			ArgsUsage: "<id|at-uri>",
 			Action:    runAttachmentGet,
+		},
+	},
+}
+
+// --- Acknowledgement ---
+
+var cmdAcknowledgement = &cli.Command{
+	Name:    "acknowledgement",
+	Aliases: []string{"ack"},
+	Usage:   "manage acknowledgement records",
+	Commands: []*cli.Command{
+		{
+			Name:  "create",
+			Usage: "create a new acknowledgement record",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "subject", Usage: "subject AT-URI (required)"},
+				&cli.StringFlag{Name: "context", Usage: "context AT-URI (optional)"},
+				&cli.BoolFlag{Name: "acknowledged", Usage: "acknowledge (default true)"},
+				&cli.BoolFlag{Name: "rejected", Usage: "reject (sets acknowledged=false)"},
+				&cli.StringFlag{Name: "comment", Usage: "optional comment (max 10000 chars)"},
+			},
+			Action: runAcknowledgementCreate,
+		},
+		{
+			Name:  "delete",
+			Usage: "delete acknowledgement record(s)",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "id", Usage: "acknowledgement ID, or select interactively"},
+				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+			},
+			Action: runAcknowledgementDelete,
+		},
+		{
+			Name:    "ls",
+			Aliases: []string{"list"},
+			Usage:   "list acknowledgement records",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+			},
+			Action: runAcknowledgementList,
+		},
+		{
+			Name:      "get",
+			Usage:     "get acknowledgement details",
+			ArgsUsage: "<id|at-uri>",
+			Action:    runAcknowledgementGet,
 		},
 	},
 }
