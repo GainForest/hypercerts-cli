@@ -353,6 +353,8 @@ var cmdMeasurement = &cli.Command{
 				&cli.StringFlag{Name: "start-date", Usage: "start date (YYYY-MM-DD or RFC3339)"},
 				&cli.StringFlag{Name: "end-date", Usage: "end date (YYYY-MM-DD or RFC3339)"},
 				&cli.StringFlag{Name: "method-type", Usage: "methodology type"},
+				&cli.StringFlag{Name: "measurer", Usage: "DID of the measurer (can be specified multiple times or comma-separated)"},
+				&cli.StringFlag{Name: "evidence-uri", Usage: "URI to evidence document"},
 			},
 			Action: runMeasurementCreate,
 		},

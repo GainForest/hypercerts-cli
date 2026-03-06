@@ -610,7 +610,7 @@ func deleteActivity(ctx context.Context, client *atclient.APIClient, w io.Writer
 	}
 
 	// Find linked records
-	measurementURIs := findLinkedURIs(ctx, client, did, atproto.CollectionMeasurement, "subject", uri)
+	measurementURIs := findLinkedURIs(ctx, client, did, atproto.CollectionMeasurement, "subjects", uri)
 	attachmentURIs := findLinkedURIs(ctx, client, did, atproto.CollectionAttachment, "subjects", uri)
 	evaluationURIs := findLinkedURIs(ctx, client, did, atproto.CollectionEvaluation, "subject", uri)
 
@@ -725,7 +725,17 @@ func runActivityList(ctx context.Context, cmd *cli.Command) error {
 	measurementCounts := make(map[string]int)
 	measurements, _ := atproto.ListAllRecords(ctx, client, did, atproto.CollectionMeasurement)
 	for _, m := range measurements {
-		if subject, ok := m.Value["subject"].(map[string]any); ok {
+		// Try subjects array first (new schema)
+		if subjects, ok := m.Value["subjects"].([]any); ok {
+			for _, s := range subjects {
+				if subMap, ok := s.(map[string]any); ok {
+					if subURI, ok := subMap["uri"].(string); ok {
+						measurementCounts[subURI]++
+					}
+				}
+			}
+		} else if subject, ok := m.Value["subject"].(map[string]any); ok {
+			// Fall back to old schema
 			if subURI, ok := subject["uri"].(string); ok {
 				measurementCounts[subURI]++
 			}

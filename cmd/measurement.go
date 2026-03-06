@@ -148,7 +148,7 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 	}
-	record["subject"] = buildStrongRef(subjectURI, subjectCID)
+	record["subjects"] = []any{buildStrongRef(subjectURI, subjectCID)}
 
 	// Check for non-interactive mode (flags provided)
 	metric := cmd.String("metric")
@@ -166,6 +166,19 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 	if s := cmd.String("method-type"); s != "" {
 		record["methodType"] = s
+		hasFlags = true
+	}
+	if s := cmd.String("measurer"); s != "" {
+		record["measurers"] = []any{
+			map[string]any{
+				"$type": "app.certified.defs#did",
+				"did":   s,
+			},
+		}
+		hasFlags = true
+	}
+	if s := cmd.String("evidence-uri"); s != "" {
+		record["evidenceURI"] = []any{s}
 		hasFlags = true
 	}
 
@@ -221,8 +234,11 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 		record["value"] = value
 	} else {
 		// Interactive: show all fields at once using huh form
-		var startDate, endDate, methodType, methodURI, comment string
+		var startDate, endDate, methodType, methodURI, comment, measurerDID, evidenceURIStr string
 		var addLocations bool
+
+		// Default measurer to current user's DID
+		measurerDID = did
 
 		form := huh.NewForm(
 			huh.NewGroup(
@@ -323,6 +339,17 @@ func runMeasurementCreate(ctx context.Context, cmd *cli.Command) error {
 		}
 		if comment != "" {
 			record["comment"] = comment
+		}
+		if measurerDID != "" {
+			record["measurers"] = []any{
+				map[string]any{
+					"$type": "app.certified.defs#did",
+					"did":   measurerDID,
+				},
+			}
+		}
+		if evidenceURIStr != "" {
+			record["evidenceURI"] = []any{evidenceURIStr}
 		}
 
 		// Handle linked records interactively (need API calls)
@@ -643,10 +670,25 @@ func runMeasurementList(ctx context.Context, cmd *cli.Command) error {
 			// Apply activity filter if specified
 			if activityFilter != "" {
 				activityURI := resolveRecordURI(did, atproto.CollectionActivity, activityFilter)
-				if subject := mapMap(e.Value, "subject"); subject != nil {
-					if mapStr(subject, "uri") != activityURI {
-						continue
+				matched := false
+				// Try subjects array first (new schema)
+				if subjects := mapSlice(e.Value, "subjects"); len(subjects) > 0 {
+					for _, s := range subjects {
+						if subMap, ok := s.(map[string]any); ok {
+							if mapStr(subMap, "uri") == activityURI {
+								matched = true
+								break
+							}
+						}
 					}
+				} else if subject := mapMap(e.Value, "subject"); subject != nil {
+					// Fall back to old schema
+					if mapStr(subject, "uri") == activityURI {
+						matched = true
+					}
+				}
+				if !matched {
+					continue
 				}
 			}
 			records = append(records, map[string]any{"uri": e.URI, "record": e.Value})
