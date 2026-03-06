@@ -91,8 +91,8 @@ func BuildApp(w io.Writer) *cli.Command {
 			cmdFunding,
 			cmdWorkScope,
 			cmdBadge,
-			// cmdProfile,       // TODO: implementation missing
-			// cmdOrganization,  // TODO: implementation missing
+			cmdProfile,
+			cmdOrganization,
 		},
 	}
 }
@@ -962,74 +962,71 @@ var cmdBadge = &cli.Command{
 	},
 }
 
-// TODO: Profile and Organization commands are defined but implementations are missing
-// Commenting out until profile.go and organization.go are created
+var cmdProfile = &cli.Command{
+	Name:  "profile",
+	Usage: "manage actor profile (singleton record)",
+	Commands: []*cli.Command{
+		{
+			Name:  "set",
+			Usage: "create or update profile",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "display-name", Usage: "display name (max 64 graphemes)"},
+				&cli.StringFlag{Name: "description", Usage: "profile description (max 256 graphemes)"},
+				&cli.StringFlag{Name: "pronouns", Usage: "pronouns (max 20 graphemes)"},
+				&cli.StringFlag{Name: "website", Usage: "website URI"},
+			},
+			Action: runProfileSet,
+		},
+		{
+			Name:  "get",
+			Usage: "get profile details",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+			},
+			Action: runProfileGet,
+		},
+		{
+			Name:  "delete",
+			Usage: "delete profile",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+			},
+			Action: runProfileDelete,
+		},
+	},
+}
 
-// var cmdProfile = &cli.Command{
-// 	Name:  "profile",
-// 	Usage: "manage actor profile (singleton record)",
-// 	Commands: []*cli.Command{
-// 		{
-// 			Name:  "set",
-// 			Usage: "create or update profile",
-// 			Flags: []cli.Flag{
-// 				&cli.StringFlag{Name: "display-name", Usage: "display name (max 64 graphemes)"},
-// 				&cli.StringFlag{Name: "description", Usage: "profile description (max 256 graphemes)"},
-// 				&cli.StringFlag{Name: "pronouns", Usage: "pronouns (max 20 graphemes)"},
-// 				&cli.StringFlag{Name: "website", Usage: "website URI"},
-// 			},
-// 			Action: runProfileSet,
-// 		},
-// 		{
-// 			Name:  "get",
-// 			Usage: "get profile details",
-// 			Flags: []cli.Flag{
-// 				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
-// 			},
-// 			Action: runProfileGet,
-// 		},
-// 		{
-// 			Name:  "delete",
-// 			Usage: "delete profile",
-// 			Flags: []cli.Flag{
-// 				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
-// 			},
-// 			Action: runProfileDelete,
-// 		},
-// 	},
-// }
-
-// var cmdOrganization = &cli.Command{
-// 	Name:    "organization",
-// 	Aliases: []string{"org"},
-// 	Usage:   "manage organization metadata (singleton record)",
-// 	Commands: []*cli.Command{
-// 		{
-// 			Name:  "set",
-// 			Usage: "create or update organization",
-// 			Flags: []cli.Flag{
-// 				&cli.StringFlag{Name: "type", Usage: "organization type(s), comma-separated (e.g., nonprofit,ngo)"},
-// 				&cli.StringFlag{Name: "founded-date", Usage: "founded date (YYYY-MM-DD)"},
-// 				&cli.StringFlag{Name: "url", Usage: "organization URL"},
-// 				&cli.StringFlag{Name: "url-label", Usage: "label for the URL"},
-// 			},
-// 			Action: runOrganizationSet,
-// 		},
-// 		{
-// 			Name:  "get",
-// 			Usage: "get organization details",
-// 			Flags: []cli.Flag{
-// 				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
-// 			},
-// 			Action: runOrganizationGet,
-// 		},
-// 		{
-// 			Name:  "delete",
-// 			Usage: "delete organization",
-// 			Flags: []cli.Flag{
-// 				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
-// 			},
-// 			Action: runOrganizationDelete,
-// 		},
-// 	},
-// }
+var cmdOrganization = &cli.Command{
+	Name:    "organization",
+	Aliases: []string{"org"},
+	Usage:   "manage organization metadata (singleton record)",
+	Commands: []*cli.Command{
+		{
+			Name:  "set",
+			Usage: "create or update organization",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "type", Usage: "organization type(s), comma-separated (e.g., nonprofit,ngo)"},
+				&cli.StringFlag{Name: "founded-date", Usage: "founded date (YYYY-MM-DD)"},
+				&cli.StringFlag{Name: "url", Usage: "organization URL"},
+				&cli.StringFlag{Name: "url-label", Usage: "label for the URL"},
+			},
+			Action: runOrganizationSet,
+		},
+		{
+			Name:  "get",
+			Usage: "get organization details",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
+			},
+			Action: runOrganizationGet,
+		},
+		{
+			Name:  "delete",
+			Usage: "delete organization",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{Name: "force", Aliases: []string{"f"}, Usage: "skip confirmation"},
+			},
+			Action: runOrganizationDelete,
+		},
+	},
+}

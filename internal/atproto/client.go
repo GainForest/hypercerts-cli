@@ -35,6 +35,24 @@ func CreateRecord(ctx context.Context, client *atclient.APIClient, collection st
 	return resp.Uri, resp.Cid, nil
 }
 
+// CreateRecordWithRkey creates a new record with a specific record key.
+// Used for singleton records like profile and organization (rkey="self").
+// Always sets Validate: false for custom unpublished lexicons.
+func CreateRecordWithRkey(ctx context.Context, client *atclient.APIClient, collection, rkey string, record map[string]any) (uri, cid string, err error) {
+	validate := false
+	resp, err := agnostic.RepoCreateRecord(ctx, client, &agnostic.RepoCreateRecord_Input{
+		Collection: collection,
+		Repo:       client.AccountDID.String(),
+		Record:     record,
+		Rkey:       &rkey,
+		Validate:   &validate,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return resp.Uri, resp.Cid, nil
+}
+
 // GetRecord fetches a single record by DID, collection, and record key.
 // Returns the record value, CID, and error.
 func GetRecord(ctx context.Context, client *atclient.APIClient, did, collection, rkey string) (map[string]any, string, error) {
