@@ -239,6 +239,7 @@ var cmdContributor = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "identifier", Usage: "DID or profile URI"},
 				&cli.StringFlag{Name: "name", Usage: "display name (max 100 chars)"},
+				&cli.StringFlag{Name: "image", Usage: "image URL"},
 			},
 			Action: runContributorCreate,
 		},
@@ -249,6 +250,7 @@ var cmdContributor = &cli.Command{
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "identifier", Usage: "new identifier"},
 				&cli.StringFlag{Name: "name", Usage: "new display name"},
+				&cli.StringFlag{Name: "image", Usage: "new image URL"},
 			},
 			Action: runContributorEdit,
 		},

@@ -66,10 +66,10 @@ func runContributorList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	fmt.Fprintf(w, "\033[1m%-15s %-30s %-25s %s\033[0m\n", "ID", "IDENTIFIER", "NAME", "CREATED")
-	fmt.Fprintf(w, "%-15s %-30s %-25s %s\n",
+	fmt.Fprintf(w, "\033[1m%-15s %-30s %-25s %-6s %s\033[0m\n", "ID", "IDENTIFIER", "NAME", "IMAGE", "CREATED")
+	fmt.Fprintf(w, "%-15s %-30s %-25s %-6s %s\n",
 		strings.Repeat("-", 13), strings.Repeat("-", 28),
-		strings.Repeat("-", 23), strings.Repeat("-", 10))
+		strings.Repeat("-", 23), strings.Repeat("-", 4), strings.Repeat("-", 10))
 
 	for _, e := range entries {
 		aturi, err := syntax.ParseATURI(e.URI)
@@ -85,13 +85,17 @@ func runContributorList(ctx context.Context, cmd *cli.Command) error {
 		if len(displayName) > 23 {
 			displayName = displayName[:20] + "..."
 		}
+		hasImage := "-"
+		if imageVal, ok := e.Value["image"]; ok && imageVal != nil {
+			hasImage = "✓"
+		}
 		created := "-"
 		if createdAt := mapStr(e.Value, "createdAt"); createdAt != "" {
 			if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
 				created = t.Format("2006-01-02")
 			}
 		}
-		fmt.Fprintf(w, "%-15s %-30s %-25s %s\n", id, identifier, displayName, created)
+		fmt.Fprintf(w, "%-15s %-30s %-25s %-6s %s\n", id, identifier, displayName, hasImage, created)
 	}
 
 	if len(entries) == 0 {
@@ -109,6 +113,7 @@ func runContributorCreate(ctx context.Context, cmd *cli.Command) error {
 
 	identifier := cmd.String("identifier")
 	displayName := cmd.String("name")
+	imageURL := cmd.String("image")
 
 	if identifier == "" {
 		form := huh.NewForm(
@@ -129,6 +134,11 @@ func runContributorCreate(ctx context.Context, cmd *cli.Command) error {
 					Description("Optional, max 100 chars").
 					CharLimit(100).
 					Value(&displayName),
+
+				huh.NewInput().
+					Title("Image URL").
+					Description("Optional").
+					Value(&imageURL),
 			).Title("Contributor"),
 		).WithTheme(style.Theme())
 
@@ -152,6 +162,12 @@ func runContributorCreate(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("display name exceeds 100 characters (%d)", len(displayName))
 		}
 		record["displayName"] = displayName
+	}
+	if imageURL != "" {
+		record["image"] = map[string]any{
+			"$type": "org.hypercerts.defs#uri",
+			"uri":   imageURL,
+		}
 	}
 
 	uri, _, err := atproto.CreateRecord(ctx, client, atproto.CollectionContributorInfo, record)
@@ -212,10 +228,17 @@ func runContributorEdit(ctx context.Context, cmd *cli.Command) error {
 
 	newIdentifier := cmd.String("identifier")
 	newName := cmd.String("name")
+	newImageURL := cmd.String("image")
 
-	if newIdentifier == "" && newName == "" {
+	if newIdentifier == "" && newName == "" && newImageURL == "" {
 		newIdentifier = mapStr(existing, "identifier")
 		newName = mapStr(existing, "displayName")
+		// Extract existing image URL if present
+		if imageVal, ok := existing["image"].(map[string]any); ok {
+			if uri, ok := imageVal["uri"].(string); ok {
+				newImageURL = uri
+			}
+		}
 
 		form := huh.NewForm(
 			huh.NewGroup(
@@ -229,6 +252,11 @@ func runContributorEdit(ctx context.Context, cmd *cli.Command) error {
 					Description("Max 100 chars").
 					CharLimit(100).
 					Value(&newName),
+
+				huh.NewInput().
+					Title("Image URL").
+					Description("Optional").
+					Value(&newImageURL),
 			).Title("Edit Contributor"),
 		).WithTheme(style.Theme())
 
@@ -250,6 +278,24 @@ func runContributorEdit(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("display name exceeds 100 characters (%d)", len(newName))
 		}
 		existing["displayName"] = newName
+		changed = true
+	}
+	// Handle image field changes
+	existingImageURL := ""
+	if imageVal, ok := existing["image"].(map[string]any); ok {
+		if uri, ok := imageVal["uri"].(string); ok {
+			existingImageURL = uri
+		}
+	}
+	if newImageURL != existingImageURL {
+		if newImageURL == "" {
+			delete(existing, "image")
+		} else {
+			existing["image"] = map[string]any{
+				"$type": "org.hypercerts.defs#uri",
+				"uri":   newImageURL,
+			}
+		}
 		changed = true
 	}
 
@@ -368,7 +414,7 @@ func selectContributor(ctx context.Context, client *atclient.APIClient, w io.Wri
 }
 
 func createContributorInline(ctx context.Context, client *atclient.APIClient, w io.Writer) (*contributorOption, error) {
-	var identifier, displayName string
+	var identifier, displayName, imageURL string
 
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -380,6 +426,7 @@ func createContributorInline(ctx context.Context, client *atclient.APIClient, w 
 					return nil
 				}).Value(&identifier),
 			huh.NewInput().Title("Display name").Description("max 100 chars, optional").CharLimit(100).Value(&displayName),
+			huh.NewInput().Title("Image URL").Description("optional").Value(&imageURL),
 		).Title("New Contributor"),
 	).WithTheme(style.Theme())
 
@@ -399,6 +446,12 @@ func createContributorInline(ctx context.Context, client *atclient.APIClient, w 
 	}
 	if displayName != "" {
 		record["displayName"] = displayName
+	}
+	if imageURL != "" {
+		record["image"] = map[string]any{
+			"$type": "org.hypercerts.defs#uri",
+			"uri":   imageURL,
+		}
 	}
 
 	uri, cid, err := atproto.CreateRecord(ctx, client, atproto.CollectionContributorInfo, record)
