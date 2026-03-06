@@ -20,16 +20,16 @@ import (
 	"github.com/GainForest/hypercerts-cli/internal/style"
 )
 
-// keyPattern validates lowercase-hyphenated keys
-var keyPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+// keyPattern validates lowercase-underscore keys
+var keyPattern = regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9]+)*$`)
 
 type workScopeOption struct {
 	URI        string
 	CID        string
 	Rkey       string
 	Key        string
-	Label      string
-	Kind       string
+	Name       string
+	Category   string
 	ParentRkey string
 	Created    string
 }
@@ -63,9 +63,9 @@ func fetchWorkScopes(ctx context.Context, client *atclient.APIClient, did string
 			key = key[:22] + "..."
 		}
 
-		label := mapStr(e.Value, "label")
-		if len(label) > 30 {
-			label = label[:27] + "..."
+		name := mapStr(e.Value, "name")
+		if len(name) > 30 {
+			name = name[:27] + "..."
 		}
 
 		result = append(result, workScopeOption{
@@ -73,8 +73,8 @@ func fetchWorkScopes(ctx context.Context, client *atclient.APIClient, did string
 			CID:        e.CID,
 			Rkey:       string(aturi.RecordKey()),
 			Key:        key,
-			Label:      label,
-			Kind:       mapStr(e.Value, "kind"),
+			Name:      name,
+			Category:       mapStr(e.Value, "category"),
 			ParentRkey: parentRkey,
 			Created:    created,
 		})
@@ -95,10 +95,10 @@ func selectWorkScope(ctx context.Context, client *atclient.APIClient, w io.Write
 	}
 
 	selected, err := menu.SingleSelect(w, scopes, "work scope",
-		func(s workScopeOption) string { return s.Label },
+		func(s workScopeOption) string { return s.Name },
 		func(s workScopeOption) string {
-			if s.Kind != "" {
-				return s.Kind
+			if s.Category != "" {
+				return s.Category
 			}
 			return s.Key
 		},
@@ -123,19 +123,19 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	key := cmd.String("key")
-	label := cmd.String("label")
-	kind := cmd.String("kind")
+	name := cmd.String("name")
+	category := cmd.String("category")
 	description := cmd.String("description")
 
-	if key != "" && label != "" {
+	if key != "" && name != "" {
 		// Non-interactive flag mode
 		if !keyPattern.MatchString(key) {
 			return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
 		}
 		record["key"] = key
-		record["label"] = label
-		if kind != "" {
-			record["kind"] = kind
+		record["name"] = name
+		if category != "" {
+			record["category"] = category
 		}
 		if description != "" {
 			record["description"] = description
@@ -162,11 +162,11 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 					Description("Human-readable name").
 					Validate(func(s string) error {
 						if strings.TrimSpace(s) == "" {
-							return errors.New("label is required")
+							return errors.New("name is required")
 						}
 						return nil
 					}).
-					Value(&label),
+					Value(&name),
 
 				huh.NewSelect[string]().
 					Title("Kind").
@@ -177,9 +177,9 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 						huh.NewOption("language - programming/natural", "language"),
 						huh.NewOption("domain - field of study", "domain"),
 						huh.NewOption("method - approach/technique", "method"),
-						huh.NewOption("tag - general label", "tag"),
+						huh.NewOption("tag - general name", "tag"),
 					).
-					Value(&kind),
+					Value(&category),
 
 				huh.NewInput().
 					Title("Description").
@@ -212,9 +212,9 @@ func runWorkScopeCreate(ctx context.Context, cmd *cli.Command) error {
 			return fmt.Errorf("key must be lowercase letters and numbers separated by hyphens")
 		}
 		record["key"] = key
-		record["label"] = label
-		if kind != "" {
-			record["kind"] = kind
+		record["name"] = name
+		if category != "" {
+			record["category"] = category
 		}
 		if description != "" {
 			record["description"] = description
@@ -292,10 +292,10 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		selected, err := menu.SingleSelect(w, scopes, "work scope",
-			func(s workScopeOption) string { return s.Label },
+			func(s workScopeOption) string { return s.Name },
 			func(s workScopeOption) string {
-				if s.Kind != "" {
-					return s.Kind
+				if s.Category != "" {
+					return s.Category
 				}
 				return s.Key
 			},
@@ -320,12 +320,12 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 
 	// Get current values
 	currentKey := mapStr(existing, "key")
-	currentLabel := mapStr(existing, "label")
-	currentKind := mapStr(existing, "kind")
+	currentLabel := mapStr(existing, "name")
+	currentKind := mapStr(existing, "category")
 	currentDesc := mapStr(existing, "description")
 
 	changed := false
-	isInteractive := cmd.String("key") == "" && cmd.String("label") == "" && cmd.String("kind") == ""
+	isInteractive := cmd.String("key") == "" && cmd.String("name") == "" && cmd.String("category") == ""
 
 	if isInteractive {
 		newKey := currentKey
@@ -344,7 +344,7 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 			huh.NewGroup(
 				huh.NewInput().
 					Title("Key").
-					Description("Required, lowercase-hyphenated").
+					Description("Required, lowercase-underscore").
 					Validate(func(s string) error {
 						if strings.TrimSpace(s) == "" {
 							return errors.New("key is required")
@@ -361,7 +361,7 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 					Description("Required").
 					Validate(func(s string) error {
 						if strings.TrimSpace(s) == "" {
-							return errors.New("label is required")
+							return errors.New("name is required")
 						}
 						return nil
 					}).
@@ -375,7 +375,7 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 						huh.NewOption("language - programming/natural", "language"),
 						huh.NewOption("domain - field of study", "domain"),
 						huh.NewOption("method - approach/technique", "method"),
-						huh.NewOption("tag - general label", "tag"),
+						huh.NewOption("tag - general name", "tag"),
 					).
 					Value(&newKind),
 
@@ -405,14 +405,14 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 			changed = true
 		}
 		if newLabel != currentLabel {
-			existing["label"] = newLabel
+			existing["name"] = newLabel
 			changed = true
 		}
 		if newKind != currentKind {
 			if newKind == "" {
-				delete(existing, "kind")
+				delete(existing, "category")
 			} else {
-				existing["kind"] = newKind
+				existing["category"] = newKind
 			}
 			changed = true
 		}
@@ -446,15 +446,15 @@ func runWorkScopeEdit(ctx context.Context, cmd *cli.Command) error {
 			changed = true
 		}
 
-		newLabel := cmd.String("label")
+		newLabel := cmd.String("name")
 		if newLabel != "" && newLabel != currentLabel {
-			existing["label"] = newLabel
+			existing["name"] = newLabel
 			changed = true
 		}
 
-		newKind := cmd.String("kind")
+		newKind := cmd.String("category")
 		if newKind != "" && newKind != currentKind {
-			existing["kind"] = newKind
+			existing["category"] = newKind
 			changed = true
 		}
 
@@ -498,10 +498,10 @@ func runWorkScopeDelete(ctx context.Context, cmd *cli.Command) error {
 			return err
 		}
 		selected, err := menu.MultiSelect(w, scopes, "work scope",
-			func(s workScopeOption) string { return s.Label },
+			func(s workScopeOption) string { return s.Name },
 			func(s workScopeOption) string {
-				if s.Kind != "" {
-					return s.Kind
+				if s.Category != "" {
+					return s.Category
 				}
 				return s.Key
 			},
@@ -556,12 +556,12 @@ func runWorkScopeList(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("failed to list work scope tags: %w", err)
 	}
 
-	// Filter by kind if specified
-	kindFilter := cmd.String("kind")
+	// Filter by category if specified
+	kindFilter := cmd.String("category")
 	if kindFilter != "" {
 		var filtered []atproto.RecordEntry
 		for _, e := range entries {
-			if k := mapStr(e.Value, "kind"); k == kindFilter {
+			if k := mapStr(e.Value, "category"); k == kindFilter {
 				filtered = append(filtered, e)
 			}
 		}
@@ -577,7 +577,7 @@ func runWorkScopeList(ctx context.Context, cmd *cli.Command) error {
 		return nil
 	}
 
-	fmt.Fprintf(w, "\033[1m%-15s %-25s %-30s %-12s %-10s %s\033[0m\n", "ID", "KEY", "LABEL", "KIND", "PARENT", "CREATED")
+	fmt.Fprintf(w, "\033[1m%-15s %-25s %-30s %-12s %-10s %s\033[0m\n", "ID", "KEY", "NAME", "CATEGORY", "PARENT", "CREATED")
 	fmt.Fprintf(w, "%-15s %-25s %-30s %-12s %-10s %s\n",
 		strings.Repeat("-", 13), strings.Repeat("-", 23),
 		strings.Repeat("-", 28), strings.Repeat("-", 10),
@@ -595,14 +595,14 @@ func runWorkScopeList(ctx context.Context, cmd *cli.Command) error {
 			key = key[:20] + "..."
 		}
 
-		label := mapStr(e.Value, "label")
-		if len(label) > 28 {
-			label = label[:25] + "..."
+		name := mapStr(e.Value, "name")
+		if len(name) > 28 {
+			name = name[:25] + "..."
 		}
 
-		kind := mapStr(e.Value, "kind")
-		if kind == "" {
-			kind = "-"
+		category := mapStr(e.Value, "category")
+		if category == "" {
+			category = "-"
 		}
 
 		parentRkey := "-"
@@ -620,7 +620,7 @@ func runWorkScopeList(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 
-		fmt.Fprintf(w, "%-15s %-25s %-30s %-12s %-10s %s\n", id, key, label, kind, parentRkey, created)
+		fmt.Fprintf(w, "%-15s %-25s %-30s %-12s %-10s %s\n", id, key, name, category, parentRkey, created)
 	}
 
 	if len(entries) == 0 {

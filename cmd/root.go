@@ -786,9 +786,9 @@ var cmdWorkScope = &cli.Command{
 			Name:  "create",
 			Usage: "create a new work scope tag",
 			Flags: []cli.Flag{
-				&cli.StringFlag{Name: "key", Usage: "lowercase-hyphenated key (e.g. climate-action)"},
-				&cli.StringFlag{Name: "label", Usage: "human-readable label"},
-				&cli.StringFlag{Name: "kind", Usage: "kind: topic, language, domain, method, tag"},
+				&cli.StringFlag{Name: "key", Usage: "lowercase, underscore-separated key (e.g. climate_action)"},
+				&cli.StringFlag{Name: "name", Usage: "human-readable name"},
+				&cli.StringFlag{Name: "category", Usage: "category: topic, language, domain, method, tag"},
 				&cli.StringFlag{Name: "description", Usage: "description"},
 				&cli.StringFlag{Name: "parent", Usage: "parent tag ID for hierarchy"},
 			},
@@ -800,8 +800,8 @@ var cmdWorkScope = &cli.Command{
 			ArgsUsage: "<id|at-uri>",
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "key", Usage: "new key"},
-				&cli.StringFlag{Name: "label", Usage: "new label"},
-				&cli.StringFlag{Name: "kind", Usage: "new kind"},
+				&cli.StringFlag{Name: "name", Usage: "new name"},
+				&cli.StringFlag{Name: "category", Usage: "new category"},
 				&cli.StringFlag{Name: "description", Usage: "new description"},
 			},
 			Action: runWorkScopeEdit,
@@ -821,7 +821,7 @@ var cmdWorkScope = &cli.Command{
 			Usage:   "list work scope tags",
 			Flags: []cli.Flag{
 				&cli.BoolFlag{Name: "json", Usage: "output as JSON"},
-				&cli.StringFlag{Name: "kind", Usage: "filter by kind"},
+				&cli.StringFlag{Name: "category", Usage: "filter by category"},
 			},
 			Action: runWorkScopeList,
 		},
