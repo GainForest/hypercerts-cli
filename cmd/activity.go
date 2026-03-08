@@ -57,51 +57,86 @@ func fetchActivities(ctx context.Context, client *atclient.APIClient, did string
 	return result, nil
 }
 
-// buildWorkScopeCel parses comma-separated label keys and builds a workScopeCel record.
-// Labels are trimmed and deduplicated. The CEL expression is auto-generated as scope.hasAll([...]).
-func buildWorkScopeCel(csv string) (map[string]any, error) {
+// buildWorkScopeCel parses comma-separated tag keys and builds a workScopeCel record.
+// Tag keys are trimmed and deduplicated. The CEL expression is auto-generated as scope.hasAll([...]).
+// Each tag key is looked up in the user's workscope.tag records to build strongRefs.
+func buildWorkScopeCel(ctx context.Context, client *atclient.APIClient, csv string) (map[string]any, error) {
 	parts := strings.Split(csv, ",")
 	seen := make(map[string]bool)
-	var labels []string
+	var tagKeys []string
 	for _, p := range parts {
 		key := strings.TrimSpace(p)
 		if key == "" {
 			continue
 		}
 		if !keyPattern.MatchString(key) {
-			return nil, fmt.Errorf("invalid label key %q: must be lowercase letters/numbers separated by hyphens", key)
+			return nil, fmt.Errorf("invalid tag key %q: must be lowercase letters/numbers separated by underscores", key)
 		}
 		if !seen[key] {
 			seen[key] = true
-			labels = append(labels, key)
+			tagKeys = append(tagKeys, key)
 		}
 	}
-	if len(labels) == 0 {
-		return nil, fmt.Errorf("at least one label is required for --work-scope-cel")
+	if len(tagKeys) == 0 {
+		return nil, fmt.Errorf("at least one tag key is required for --work-scope-cel")
+	}
+
+	// Fetch all workscope tags to look up URIs and CIDs
+	did := client.AccountDID.String()
+	entries, err := atproto.ListAllRecords(ctx, client, did, atproto.CollectionWorkScopeTag)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch workscope tags: %w", err)
+	}
+
+	// Build a map of key -> (URI, CID) for lookup
+	type tagRef struct {
+		URI string
+		CID string
+	}
+	tagMap := make(map[string]tagRef)
+	for _, e := range entries {
+		key := mapStr(e.Value, "key")
+		tagMap[key] = tagRef{URI: e.URI, CID: e.CID}
+	}
+
+	// Build strongRefs for each tag key
+	var usedTags []any
+	var notFound []string
+	for _, key := range tagKeys {
+		ref, exists := tagMap[key]
+		if !exists {
+			notFound = append(notFound, key)
+			continue
+		}
+		usedTags = append(usedTags, buildStrongRef(ref.URI, ref.CID))
+	}
+
+	if len(notFound) > 0 {
+		return nil, fmt.Errorf("workscope tag keys not found: %s (create them first with 'hyper workscope create')", strings.Join(notFound, ", "))
+	}
+
+	if len(usedTags) == 0 {
+		return nil, fmt.Errorf("no valid workscope tags found for the provided keys")
 	}
 
 	// Build CEL expression
 	var expr string
-	if len(labels) == 1 {
-		expr = fmt.Sprintf("scope.has('%s')", labels[0])
+	if len(tagKeys) == 1 {
+		expr = fmt.Sprintf("scope.has('%s')", tagKeys[0])
 	} else {
-		quoted := make([]string, len(labels))
-		for i, l := range labels {
-			quoted[i] = fmt.Sprintf("'%s'", l)
+		quoted := make([]string, len(tagKeys))
+		for i, k := range tagKeys {
+			quoted[i] = fmt.Sprintf("'%s'", k)
 		}
 		expr = fmt.Sprintf("scope.hasAll([%s])", strings.Join(quoted, ", "))
-	}
-
-	labelSlice := make([]any, len(labels))
-	for i, l := range labels {
-		labelSlice[i] = l
 	}
 
 	return map[string]any{
 		"$type":      atproto.CollectionWorkScopeCel,
 		"expression": expr,
-		"labels":     labelSlice,
+		"usedTags":   usedTags,
 		"version":    "v1",
+		"createdAt":  time.Now().UTC().Format(time.RFC3339),
 	}, nil
 }
 
@@ -138,7 +173,7 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 		hasFlags = true
 	}
 	if s := cmd.String("work-scope-cel"); s != "" {
-		ws, err := buildWorkScopeCel(s)
+		ws, err := buildWorkScopeCel(ctx, client, s)
 		if err != nil {
 			return err
 		}
@@ -383,7 +418,7 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 		changed = true
 	}
 	if s := cmd.String("work-scope-cel"); s != "" {
-		ws, err := buildWorkScopeCel(s)
+		ws, err := buildWorkScopeCel(ctx, client, s)
 		if err != nil {
 			return err
 		}
