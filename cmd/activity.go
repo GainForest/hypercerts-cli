@@ -814,14 +814,28 @@ func runActivityList(ctx context.Context, cmd *cli.Command) error {
 		scope := "-"
 		if ws, ok := e.Value["workScope"].(map[string]any); ok {
 			wsType := mapStr(ws, "$type")
-			if strings.HasSuffix(wsType, "#workScopeCel") {
-				if labels, ok := ws["labels"].([]any); ok {
-					var keys []string
+			if strings.HasSuffix(wsType, "#workScopeCel") || wsType == "org.hypercerts.workscope.cel" {
+				var keys []string
+				// Try new schema first: usedTags (array of strongRefs)
+				if usedTags, ok := ws["usedTags"].([]any); ok {
+					for _, tag := range usedTags {
+						if ref, ok := tag.(map[string]any); ok {
+							if uriStr := mapStr(ref, "uri"); uriStr != "" {
+								if tagURI, err := syntax.ParseATURI(uriStr); err == nil {
+									keys = append(keys, string(tagURI.RecordKey()))
+								}
+							}
+						}
+					}
+				} else if labels, ok := ws["labels"].([]any); ok {
+					// Fall back to old schema: labels (array of strings)
 					for _, l := range labels {
 						if s, ok := l.(string); ok {
 							keys = append(keys, s)
 						}
 					}
+				}
+				if len(keys) > 0 {
 					scope = strings.Join(keys, ",")
 				}
 			} else if s := mapStr(ws, "scope"); s != "" {
