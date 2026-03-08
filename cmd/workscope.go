@@ -73,8 +73,8 @@ func fetchWorkScopes(ctx context.Context, client *atclient.APIClient, did string
 			CID:        e.CID,
 			Rkey:       string(aturi.RecordKey()),
 			Key:        key,
-			Name:      name,
-			Category:       mapStr(e.Value, "category"),
+			Name:       name,
+			Category:   mapStr(e.Value, "category"),
 			ParentRkey: parentRkey,
 			Created:    created,
 		})

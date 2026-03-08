@@ -319,7 +319,7 @@ func runCollectionEdit(ctx context.Context, cmd *cli.Command) error {
 	currentTitle := mapStr(existing, "title")
 	currentType := mapStr(existing, "type")
 	currentDesc := mapStr(existing, "shortDescription")
-	
+
 	// Get current avatar/banner URIs
 	currentAvatar := ""
 	if avatarObj := mapMap(existing, "avatar"); avatarObj != nil {
