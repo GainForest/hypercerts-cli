@@ -1,6 +1,6 @@
 # Agent Instructions
 
-Hypercerts CLI (`hyper`) for managing impact claims, measurements, locations, attachments, and contributors on ATProto.
+Hypercerts CLI (`hc`) for managing impact claims, measurements, locations, attachments, and contributors on ATProto.
 
 Module: `github.com/GainForest/hypercerts-cli` | Go 1.25 | CLI framework: `urfave/cli/v3`
 
@@ -119,7 +119,7 @@ Status output uses ANSI codes directly: bold `\033[1m`, cyan `\033[36m`, green `
 ### Current command tree
 
 ```
-hyper
+hc
 ├── account login/logout/status
 ├── activity create/edit/delete/ls/get    # Core hypercert
 ├── measurement create/edit/delete/ls     # Impact metrics (alias: meas)
@@ -164,42 +164,42 @@ When creating an activity interactively, users can add these optional fields:
 ## Project structure
 
 ```
-hyper/
-  main.go                           # Entry point, calls cmd.Execute()
-  cmd/
-    root.go                         # BuildApp(), global flags, full command tree
-    util.go                         # requireAuth, mapStr, buildStrongRef, buildLocationRecord, etc.
-    util_test.go                    # Tests for shared helpers
-    account.go                      # login / logout / status
-    activity.go                     # Activity CRUD + selectActivity, cascading delete
-    activityform.go                 # Bubbletea model: activity create with live preview card
-    measurement.go                  # Measurement CRUD + activity linking via subject strongRef
-    location.go                     # Location CRUD (LP v1.0) + selectLocation, selectLocations
-    attachment.go                   # Attachment CRUD + subjects[] array, content URIs
-    rights.go                       # Rights CRUD + selectRights (licenses)
-    evaluation.go                   # Evaluation CRUD + score, measurements[], evaluators[]
-    collection.go                   # Collection CRUD + items[] with weights
-    funding.go                      # Funding receipt CRUD + payment details
-    workscope.go                    # Work scope tag CRUD + hierarchy
-    contributor.go                  # Contributor CRUD + selectContributor
-    record.go                       # Top-level get / ls / resolve shortcuts
-  internal/
-    atproto/
-      collections.go                # NSID constants (18 record types incl. app.certified.location)
-      auth.go                       # Session persistence (~/.local/state/hc/auth-session.json)
-      auth_test.go                  # Persist/load/wipe session tests
-      client.go                     # CreateRecord, GetRecord, PutRecord, DeleteRecord, ListAllRecords
-    menu/
-      confirm.go                    # Confirm(), ConfirmBulkDelete() (huh-powered, text fallback for non-TTY)
-      confirm_test.go               # Confirm/reject/auto-confirm tests
-      select.go                     # SingleSelect[T], SingleSelectWithCreate[T] (generic, huh-powered)
-      multiselect.go                # MultiSelect[T] (generic, checkboxes, huh-powered)
-    style/
-      theme.go                      # Centralized huh theme (style.Theme())
-  Makefile
-  .golangci.yaml
-  .goreleaser.yaml
-  .gitignore
+cmd/
+  hc/
+    main.go                         # Entry point, calls cmd.Execute()
+  root.go                           # BuildApp(), global flags, full command tree
+  util.go                           # requireAuth, mapStr, buildStrongRef, buildLocationRecord, etc.
+  util_test.go                      # Tests for shared helpers
+  account.go                        # login / logout / status
+  activity.go                       # Activity CRUD + selectActivity, cascading delete
+  activityform.go                   # Bubbletea model: activity create with live preview card
+  measurement.go                    # Measurement CRUD + activity linking via subject strongRef
+  location.go                       # Location CRUD (LP v1.0) + selectLocation, selectLocations
+  attachment.go                     # Attachment CRUD + subjects[] array, content URIs
+  rights.go                         # Rights CRUD + selectRights (licenses)
+  evaluation.go                     # Evaluation CRUD + score, measurements[], evaluators[]
+  collection.go                     # Collection CRUD + items[] with weights
+  funding.go                        # Funding receipt CRUD + payment details
+  workscope.go                      # Work scope tag CRUD + hierarchy
+  contributor.go                    # Contributor CRUD + selectContributor
+  record.go                         # Top-level get / ls / resolve shortcuts
+internal/
+  atproto/
+    collections.go                  # NSID constants (18 record types incl. app.certified.location)
+    auth.go                         # Session persistence (~/.local/state/hc/auth-session.json)
+    auth_test.go                    # Persist/load/wipe session tests
+    client.go                       # CreateRecord, GetRecord, PutRecord, DeleteRecord, ListAllRecords
+  menu/
+    confirm.go                      # Confirm(), ConfirmBulkDelete() (huh-powered, text fallback for non-TTY)
+    confirm_test.go                 # Confirm/reject/auto-confirm tests
+    select.go                       # SingleSelect[T], SingleSelectWithCreate[T] (generic, huh-powered)
+    multiselect.go                  # MultiSelect[T] (generic, checkboxes, huh-powered)
+  style/
+    theme.go                        # Centralized huh theme (style.Theme())
+Makefile
+.golangci.yaml
+.goreleaser.yaml
+.gitignore
 ```
 
 ## ATProto lexicon collections
