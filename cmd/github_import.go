@@ -113,6 +113,14 @@ func runFromGitHub(ctx context.Context, cmd *cli.Command, client *atclient.APICl
 	// Build activity record
 	activityRecord := buildActivityFromGitHub(repoInfo, createdContribs)
 
+	// Pass through --work-scope if provided
+	if s := cmd.String("work-scope"); s != "" {
+		activityRecord["workScope"] = map[string]any{
+			"$type": atproto.CollectionActivity + "#workScopeString",
+			"scope": s,
+		}
+	}
+
 	// Create activity record
 	uri, _, err := atproto.CreateRecord(ctx, client, atproto.CollectionActivity, activityRecord)
 	if err != nil {
