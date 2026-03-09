@@ -154,7 +154,7 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 
 	// Check for non-interactive mode (flags provided)
 	title := cmd.String("title")
-	shortDesc := cmd.String("description")
+	shortDesc := cmd.String("short-description")
 	hasFlags := title != "" || shortDesc != ""
 
 	if s := cmd.String("start-date"); s != "" {
@@ -180,7 +180,7 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 		record["workScope"] = ws
 		hasFlags = true
 	}
-	if s := cmd.String("long-description"); s != "" {
+	if s := cmd.String("description"); s != "" {
 		record["description"] = s
 		hasFlags = true
 	}
@@ -394,11 +394,11 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 		existing["title"] = t
 		changed = true
 	}
-	if d := cmd.String("description"); d != "" {
+	if d := cmd.String("short-description"); d != "" {
 		existing["shortDescription"] = d
 		changed = true
 	}
-	if s := cmd.String("long-description"); s != "" {
+	if s := cmd.String("description"); s != "" {
 		existing["description"] = s
 		changed = true
 	}
