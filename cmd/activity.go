@@ -147,6 +147,10 @@ func runActivityCreate(ctx context.Context, cmd *cli.Command) error {
 	}
 	w := cmd.Root().Writer
 
+	if gh := cmd.String("from-github"); gh != "" {
+		return runFromGitHub(ctx, cmd, client, gh)
+	}
+
 	record := map[string]any{
 		"$type":     atproto.CollectionActivity,
 		"createdAt": time.Now().UTC().Format(time.RFC3339),

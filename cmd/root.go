@@ -176,6 +176,8 @@ var cmdActivity = &cli.Command{
 				&cli.StringFlag{Name: "end-date", Usage: "end date (RFC3339 or YYYY-MM-DD)"},
 				&cli.StringFlag{Name: "work-scope", Usage: "work scope string"},
 				&cli.StringFlag{Name: "work-scope-cel", Usage: "CEL work scope tag keys (comma-separated, e.g. mangrove_restoration,environmental_education)"},
+				&cli.StringFlag{Name: "from-github", Usage: "import from GitHub repo (owner/repo or URL)"},
+				&cli.StringFlag{Name: "github-token", Usage: "GitHub personal access token (for private repos)", Sources: cli.EnvVars("GITHUB_TOKEN")},
 			},
 			Action: runActivityCreate,
 		},
