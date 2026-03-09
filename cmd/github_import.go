@@ -121,6 +121,11 @@ func runFromGitHub(ctx context.Context, cmd *cli.Command, client *atclient.APICl
 		}
 	}
 
+	// Pass through --end-date if provided
+	if s := cmd.String("end-date"); s != "" {
+		activityRecord["endDate"] = normalizeDate(s)
+	}
+
 	// Create activity record
 	uri, _, err := atproto.CreateRecord(ctx, client, atproto.CollectionActivity, activityRecord)
 	if err != nil {
@@ -161,7 +166,6 @@ func buildActivityFromGitHub(repo *github.RepoInfo, contribs []createdContributo
 
 	// Dates
 	record["startDate"] = repo.CreatedAt
-	record["endDate"] = time.Now().UTC().Format(time.RFC3339)
 
 	// Image (owner avatar)
 	if repo.AvatarURL != "" {

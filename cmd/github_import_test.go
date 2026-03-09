@@ -3,7 +3,6 @@ package cmd
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/GainForest/hypercerts-cli/internal/atproto"
 	"github.com/GainForest/hypercerts-cli/internal/github"
@@ -47,9 +46,6 @@ func TestBuildActivityFromGitHub(t *testing.T) {
 				}
 				if record["startDate"] != "2026-02-03T10:00:00Z" {
 					t.Errorf("expected startDate 2026-02-03T10:00:00Z, got %s", record["startDate"])
-				}
-				if _, ok := record["endDate"]; !ok {
-					t.Error("expected endDate to be set")
 				}
 
 				// Check description
@@ -223,19 +219,6 @@ func TestBuildActivityFromGitHub(t *testing.T) {
 			}
 			if _, ok := record["startDate"]; !ok {
 				t.Error("expected startDate to be set")
-			}
-			if _, ok := record["endDate"]; !ok {
-				t.Error("expected endDate to be set")
-			}
-
-			// Verify endDate is recent (within 1 minute of now)
-			endDate := record["endDate"].(string)
-			endTime, err := time.Parse(time.RFC3339, endDate)
-			if err != nil {
-				t.Errorf("failed to parse endDate: %v", err)
-			}
-			if time.Since(endTime) > time.Minute {
-				t.Errorf("endDate is not recent: %s", endDate)
 			}
 
 			// Run custom checks
