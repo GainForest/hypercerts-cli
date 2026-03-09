@@ -194,6 +194,7 @@ var cmdActivity = &cli.Command{
 				&cli.StringFlag{Name: "work-scope", Usage: "new work scope"},
 				&cli.StringFlag{Name: "work-scope-cel", Usage: "CEL work scope tag keys (comma-separated)"},
 				&cli.StringFlag{Name: "image", Usage: "new image URI"},
+				&cli.StringFlag{Name: "link-contributor", Usage: "replace a contributor identity with an inline DID (selects which contributor if multiple)"},
 			},
 			Action: runActivityEdit,
 		},

@@ -436,6 +436,53 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 		}
 		changed = true
 	}
+	if did := cmd.String("link-contributor"); did != "" {
+		contributors := mapSlice(existing, "contributors")
+		if len(contributors) == 0 {
+			return fmt.Errorf("activity has no contributors to link")
+		}
+
+		var idx int
+		if len(contributors) == 1 {
+			idx = 0
+		} else {
+			// Build selection options
+			type contribChoice struct {
+				Index int
+				Label string
+			}
+			var choices []contribChoice
+			for i, c := range contributors {
+				cm, ok := c.(map[string]any)
+				if !ok {
+					continue
+				}
+				choices = append(choices, contribChoice{Index: i, Label: contributorLabel(cm)})
+			}
+
+			selected, err := menu.SingleSelect(w, choices, "contributor",
+				func(c contribChoice) string { return c.Label },
+				func(c contribChoice) string { return "" },
+			)
+			if err != nil {
+				return err
+			}
+			idx = selected.Index
+		}
+
+		entry, ok := contributors[idx].(map[string]any)
+		if !ok {
+			return fmt.Errorf("invalid contributor entry at index %d", idx)
+		}
+
+		entry["contributorIdentity"] = map[string]any{
+			"$type":    atproto.CollectionActivity + "#contributorIdentity",
+			"identity": did,
+		}
+		contributors[idx] = entry
+		existing["contributors"] = contributors
+		changed = true
+	}
 
 	// Interactive edit if no flags
 	if !changed {
@@ -1082,6 +1129,37 @@ func printBacklinkRecordsJSON(ctx context.Context, client *atclient.APIClient, w
 		results = append(results, rec)
 	}
 	fmt.Fprintln(w, prettyJSON(results))
+}
+
+// contributorLabel extracts a display label from a contributor entry.
+func contributorLabel(entry map[string]any) string {
+	identity := mapMap(entry, "contributorIdentity")
+	if identity == nil {
+		return "unknown"
+	}
+
+	var label string
+	if did := mapStr(identity, "identity"); did != "" {
+		label = did
+	} else if uri := mapStr(identity, "uri"); uri != "" {
+		label = uri
+	} else {
+		return "unknown"
+	}
+
+	// Append weight if present
+	if weight := mapStr(entry, "contributionWeight"); weight != "" {
+		label += " (weight: " + weight + ")"
+	}
+
+	// Append role if present
+	if details := mapMap(entry, "contributionDetails"); details != nil {
+		if role := mapStr(details, "role"); role != "" {
+			label += " [" + role + "]"
+		}
+	}
+
+	return label
 }
 
 // truncate shortens a string to max length with "..." suffix.
