@@ -168,7 +168,7 @@ var cmdActivity = &cli.Command{
 			Usage: "create a new activity (hypercert)",
 			Flags: []cli.Flag{
 				&cli.StringFlag{Name: "title", Usage: "activity title"},
-				&cli.StringFlag{Name: "short-description", Usage: "short description (max 300 graphemes)"},
+				&cli.StringFlag{Name: "description", Usage: "short description (max 300 graphemes)"},
 				&cli.StringFlag{Name: "avatar", Usage: "avatar image URL"},
 				&cli.StringFlag{Name: "banner", Usage: "banner image URL"},
 				&cli.StringFlag{Name: "long-description", Usage: "longer description text"},
