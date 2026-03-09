@@ -127,7 +127,7 @@ func buildActivityFromGitHub(repo *github.RepoInfo, contribs []createdContributo
 	record := map[string]any{
 		"$type":     atproto.CollectionActivity,
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
-		"title":     repo.Name,
+		"title":     repo.FullName,
 	}
 
 	// Short description (truncate to 300 chars if needed)
@@ -140,22 +140,20 @@ func buildActivityFromGitHub(repo *github.RepoInfo, contribs []createdContributo
 	}
 	record["shortDescription"] = shortDesc
 
+	// Long description with GitHub URL and metadata
+	var descParts []string
+	descParts = append(descParts, fmt.Sprintf("GitHub: %s", repo.HTMLURL))
+	if repo.License != "" {
+		descParts = append(descParts, fmt.Sprintf("License: %s", repo.License))
+	}
+	if repo.Language != "" {
+		descParts = append(descParts, fmt.Sprintf("Language: %s", repo.Language))
+	}
+	record["description"] = strings.Join(descParts, "\n")
+
 	// Dates
 	record["startDate"] = repo.CreatedAt
 	record["endDate"] = time.Now().UTC().Format(time.RFC3339)
-
-	// Work scope (language + topics)
-	var scopeParts []string
-	if repo.Language != "" {
-		scopeParts = append(scopeParts, repo.Language)
-	}
-	scopeParts = append(scopeParts, repo.Topics...)
-	if len(scopeParts) > 0 {
-		record["workScope"] = map[string]any{
-			"$type": atproto.CollectionActivity + "#workScopeString",
-			"scope": strings.Join(scopeParts, ", "),
-		}
-	}
 
 	// Image (owner avatar)
 	if repo.AvatarURL != "" {

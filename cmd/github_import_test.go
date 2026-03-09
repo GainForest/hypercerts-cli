@@ -39,8 +39,8 @@ func TestBuildActivityFromGitHub(t *testing.T) {
 				if record["$type"] != atproto.CollectionActivity {
 					t.Errorf("expected $type %s, got %s", atproto.CollectionActivity, record["$type"])
 				}
-				if record["title"] != "hypercerts-cli" {
-					t.Errorf("expected title hypercerts-cli, got %s", record["title"])
+				if record["title"] != "GainForest/hypercerts-cli" {
+					t.Errorf("expected title GainForest/hypercerts-cli, got %s", record["title"])
 				}
 				if record["shortDescription"] != "Hypercerts CLI for managing impact claims" {
 					t.Errorf("expected shortDescription, got %s", record["shortDescription"])
@@ -52,17 +52,24 @@ func TestBuildActivityFromGitHub(t *testing.T) {
 					t.Error("expected endDate to be set")
 				}
 
-				// Check workScope
-				ws, ok := record["workScope"].(map[string]any)
+				// Check description
+				desc, ok := record["description"].(string)
 				if !ok {
-					t.Fatal("expected workScope to be a map")
+					t.Fatal("expected description to be a string")
 				}
-				scope := ws["scope"].(string)
-				if !strings.Contains(scope, "Go") {
-					t.Errorf("expected workScope to contain Go, got %s", scope)
+				if !strings.Contains(desc, "GitHub: https://github.com/GainForest/hypercerts-cli") {
+					t.Errorf("expected description to contain GitHub URL, got %s", desc)
 				}
-				if !strings.Contains(scope, "hypercerts") {
-					t.Errorf("expected workScope to contain hypercerts, got %s", scope)
+				if !strings.Contains(desc, "License: MIT") {
+					t.Errorf("expected description to contain license, got %s", desc)
+				}
+				if !strings.Contains(desc, "Language: Go") {
+					t.Errorf("expected description to contain language, got %s", desc)
+				}
+
+				// Check workScope is NOT set
+				if _, ok := record["workScope"]; ok {
+					t.Error("expected workScope to be omitted")
 				}
 
 				// Check image
@@ -117,12 +124,13 @@ func TestBuildActivityFromGitHub(t *testing.T) {
 			},
 		},
 		{
-			name: "repo with no topics or language",
+			name: "repo with no language",
 			repo: &github.RepoInfo{
 				Owner:       "TestOrg",
 				Name:        "test-repo",
 				FullName:    "TestOrg/test-repo",
 				Description: "A test repository",
+				HTMLURL:     "https://github.com/TestOrg/test-repo",
 				CreatedAt:   "2026-01-01T00:00:00Z",
 				Language:    "",
 				Topics:      []string{},
@@ -130,7 +138,17 @@ func TestBuildActivityFromGitHub(t *testing.T) {
 			contribs: []createdContributor{},
 			checks: func(t *testing.T, record map[string]any) {
 				if _, ok := record["workScope"]; ok {
-					t.Error("expected workScope to be omitted when no language/topics")
+					t.Error("expected workScope to be omitted")
+				}
+				desc, ok := record["description"].(string)
+				if !ok {
+					t.Fatal("expected description to be a string")
+				}
+				if !strings.Contains(desc, "GitHub: https://github.com/TestOrg/test-repo") {
+					t.Errorf("expected description to contain GitHub URL, got %s", desc)
+				}
+				if strings.Contains(desc, "Language:") {
+					t.Errorf("expected description to not contain Language when empty, got %s", desc)
 				}
 			},
 		},
@@ -197,8 +215,8 @@ func TestBuildActivityFromGitHub(t *testing.T) {
 			if record["$type"] != atproto.CollectionActivity {
 				t.Errorf("expected $type %s, got %s", atproto.CollectionActivity, record["$type"])
 			}
-			if record["title"] != tt.repo.Name {
-				t.Errorf("expected title %s, got %s", tt.repo.Name, record["title"])
+			if record["title"] != tt.repo.FullName {
+				t.Errorf("expected title %s, got %s", tt.repo.FullName, record["title"])
 			}
 			if _, ok := record["createdAt"]; !ok {
 				t.Error("expected createdAt to be set")
