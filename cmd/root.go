@@ -193,6 +193,7 @@ var cmdActivity = &cli.Command{
 				&cli.StringFlag{Name: "end-date", Usage: "new end date"},
 				&cli.StringFlag{Name: "work-scope", Usage: "new work scope"},
 				&cli.StringFlag{Name: "work-scope-cel", Usage: "CEL work scope tag keys (comma-separated)"},
+				&cli.StringFlag{Name: "image", Usage: "new image URI"},
 			},
 			Action: runActivityEdit,
 		},

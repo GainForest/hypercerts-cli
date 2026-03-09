@@ -429,6 +429,13 @@ func runActivityEdit(ctx context.Context, cmd *cli.Command) error {
 		existing["workScope"] = ws
 		changed = true
 	}
+	if s := cmd.String("image"); s != "" {
+		existing["image"] = map[string]any{
+			"$type": "org.hypercerts.defs#uri",
+			"uri":   s,
+		}
+		changed = true
+	}
 
 	// Interactive edit if no flags
 	if !changed {
