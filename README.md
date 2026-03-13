@@ -59,33 +59,44 @@ Run `hc <command> --help` for usage details.
 
 ## Data Model
 
+The **activity claim** is the core hypercert — the anchor for all impact tracking. Other records reference it to add context. Records can be created by different people and live in different repositories.
+
 ```
-                    ┌─────────────────┐
-                    │    Activity     │
-                    │  (hypercert)    │
-                    └────────┬────────┘
-                             │
-     ┌───────────┬───────────┼───────────┬───────────┬───────────┐
-     │           │           │           │           │           │
-     ▼           ▼           ▼           ▼           ▼           ▼
-┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐
-│Measuremt│ │Attachmnt│ │Contribut│ │ Rights  │ │Location │ │Evaluatn │
-│(metrics)│ │(evidence│ │ (people)│ │(license)│ │ (geo)   │ │(3rd pty)│
-└────┬────┘ └────┬────┘ └─────────┘ └─────────┘ └─────────┘ └────┬────┘
-     │           │                                               │
-     ▼           ▼                                               ▼
-┌─────────┐ ┌─────────┐                                    ┌─────────┐
-│Location │ │Location │                                    │Measuremt│
-│(optional│ │(optional│                                    │(linked) │
-└─────────┘ └─────────┘                                    └─────────┘
+                         ┌──────────────────┐
+              ┌──────────│  Activity Claim   │──────────┐
+              │          │   (hypercert)     │          │
+              │          └──────┬───────┬────┘          │
+              │                 │       │               │
+              │    ┌────────────┤       ├────────────┐  │
+              │    │            │       │            │  │
+              ▼    ▼            ▼       ▼            ▼  ▼
+         ┌────────────┐  ┌──────────┐  ┌──────────┐  ┌────────────┐
+         │Measurement │  │Attachment│  │ Location │  │Contributor │
+         │ (metrics)  │  │(evidence)│  │  (geo)   │  │  (people)  │
+         └──────┬─────┘  └──────────┘  └──────────┘  └────────────┘
+                │
+                ▼
+         ┌────────────┐  ┌──────────┐  ┌──────────┐  ┌────────────┐
+         │ Evaluation │  │  Rights  │  │ Funding  │  │    Ack     │
+         │ (3rd-party)│  │(license) │  │(receipts)│  │ (consent)  │
+         └────────────┘  └──────────┘  └──────────┘  └────────────┘
+
+         ┌────────────┐
+         │ Collection │  ← groups activities into projects
+         └────────────┘
 ```
 
-- Measurements link to activities via `subject` (strongRef)
-- Attachments link to activities via `subjects[]` (array of strongRefs)
-- Contributors are embedded in activities via `contributors[]`
-- Rights link to activities via `rights` (strongRef)
-- Locations link to activities via `locations[]` (array of strongRefs)
-- Evaluations link to activities via `subject` and can include `measurements[]`
+- **Measurements** link to activities via `subjects[]` — quantitative impact data (e.g. "50 tonnes CO₂ reduced")
+- **Attachments** link to any record via `subjects[]` — supporting docs, URLs, IPFS links
+- **Evaluations** reference activities via `subject` and can cite `measurements[]` as evidence
+- **Contributors** are embedded in activities via `contributors[]` with weights and roles
+- **Locations** are referenced from activities via `locations[]` (Location Protocol v1.0)
+- **Rights** are referenced from activities — licenses and usage terms
+- **Funding Receipts** link funders to recipients, optionally referencing the activity funded
+- **Acknowledgements** express consent — a contributor confirms their inclusion, a funder confirms a receipt
+- **Collections** group activities (and other collections) into projects or portfolios
+
+See the [full data model docs](https://docs.hypercerts.org/core-concepts/hypercerts-core-data-model) and [lexicon reference](https://docs.hypercerts.org/lexicons/introduction-to-lexicons) for details.
 
 ## Environment Variables
 
