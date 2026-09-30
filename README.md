@@ -1,5 +1,7 @@
 # Hypercerts CLI
 
+> **Deprecation notice:** The Hypercerts CLI is being deprecated and is not recommended for new integrations. Existing users can refer to this repository for the CLI's current documentation.
+
 <p align="center">
   <img src="demo.gif" alt="Hypercerts CLI demo" width="800" />
 </p>
