@@ -1,5 +1,5 @@
 > [!CAUTION]
-> ⚠️ **The Hypercerts CLI is being deprecated.** Do not use it for new integrations. Existing users can refer to this repository for the CLI's current documentation.
+> ⚠️ **The Hypercerts CLI is deprecated and archived.** Do not use it for new integrations. Existing users can refer to this repository for the CLI's current documentation.
 
 # Hypercerts CLI
 
